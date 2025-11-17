@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Spartiti PDF Editor</title>
+    
+    <!-- PWA Configuration -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Spartiti PDF">
+    <meta name="theme-color" content="#667eea">
+    
+    <!-- App Icons -->
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <link rel="icon" type="image/png" href="icon-180.png">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         * {
@@ -602,6 +613,11 @@
                 </div>
 
                 <div class="tool-group">
+                    <button class="tool-btn" id="applyToAllBtn" title="Applica questo ritaglio a tutte le pagine" style="display: none; background: #3b82f6; font-size: 11px; padding: 6px 8px;">Applica a tutte</button>
+                    <button class="tool-btn" id="resetCropBtn" title="Ripristina ritaglio originale" style="font-size: 11px; padding: 6px 8px;">Ripristina</button>
+                </div>
+
+                <div class="tool-group">
                     <button class="tool-btn" id="autoStraighten" title="Auto-raddrizza">📐</button>
                 </div>
 
@@ -735,6 +751,8 @@
         const cropBtn = document.getElementById('cropBtn');
         const applyCropBtn = document.getElementById('applyCropBtn');
         const cancelCropBtn = document.getElementById('cancelCropBtn');
+        const applyToAllBtn = document.getElementById('applyToAllBtn');
+        const resetCropBtn = document.getElementById('resetCropBtn');
         const gridBtn = document.getElementById('gridBtn');
         const autoStraightenBtn = document.getElementById('autoStraighten');
         const contrastSlider = document.getElementById('contrast');
@@ -796,6 +814,8 @@
         cropBtn.addEventListener('click', toggleCropMode);
         applyCropBtn.addEventListener('click', applyCrop);
         cancelCropBtn.addEventListener('click', cancelCrop);
+        applyToAllBtn.addEventListener('click', applyCurrentCropToAll);
+        resetCropBtn.addEventListener('click', resetCurrentCrop);
         gridBtn.addEventListener('click', toggleGrid);
         autoStraightenBtn.addEventListener('click', autoStraighten);
         contrastSlider.addEventListener('input', updateFilters);
@@ -1002,10 +1022,12 @@
                 cropOverlay.classList.add('active');
                 applyCropBtn.style.display = 'inline-flex';
                 cancelCropBtn.style.display = 'inline-flex';
+                applyToAllBtn.style.display = 'inline-flex';
             } else {
                 cropOverlay.classList.remove('active');
                 applyCropBtn.style.display = 'none';
                 cancelCropBtn.style.display = 'none';
+                applyToAllBtn.style.display = 'none';
             }
         }
 
@@ -1144,6 +1166,108 @@
             cropOverlay.classList.remove('active');
             applyCropBtn.style.display = 'none';
             cancelCropBtn.style.display = 'none';
+            applyToAllBtn.style.display = 'none';
+        }
+
+        function applyCurrentCropToAll() {
+            if (selectedIndex === null || !cropMode) return;
+            
+            if (!confirm(`Applicare questo ritaglio a tutte le ${images.length} pagine?`)) {
+                return;
+            }
+            
+            showProgress('Applicazione ritaglio...', 0);
+            
+            // Salva i margini di ritaglio correnti
+            const currentCropX = cropData.x;
+            const currentCropY = cropData.y;
+            const currentCropWidth = cropData.width;
+            const currentCropHeight = cropData.height;
+            
+            // Ottieni le dimensioni della pagina corrente
+            const currentImg = images[selectedIndex];
+            const scaleX = currentImg.cropWidth / (previewCanvas.width * currentZoom);
+            const scaleY = currentImg.cropHeight / (previewCanvas.height * currentZoom);
+            
+            const realX = currentCropX * scaleX;
+            const realY = currentCropY * scaleY;
+            const realWidth = currentCropWidth * scaleX;
+            const realHeight = currentCropHeight * scaleY;
+            
+            // Calcola le proporzioni del ritaglio
+            const leftMargin = realX / currentImg.cropWidth;
+            const topMargin = realY / currentImg.cropHeight;
+            const widthRatio = realWidth / currentImg.cropWidth;
+            const heightRatio = realHeight / currentImg.cropHeight;
+            
+            // Applica a tutte le pagine
+            let processed = 0;
+            images.forEach((img, index) => {
+                // Calcola le nuove dimensioni basate sulle proporzioni
+                const newX = img.cropWidth * leftMargin;
+                const newY = img.cropHeight * topMargin;
+                const newWidth = img.cropWidth * widthRatio;
+                const newHeight = img.cropHeight * heightRatio;
+                
+                // Assicurati che i valori siano validi
+                if (newWidth > 0 && newHeight > 0) {
+                    img.cropX = Math.max(0, Math.min(newX, img.width - newWidth));
+                    img.cropY = Math.max(0, Math.min(newY, img.height - newHeight));
+                    img.cropWidth = newWidth;
+                    img.cropHeight = newHeight;
+                }
+                
+                processed++;
+                updateProgress((processed / images.length) * 100);
+            });
+            
+            // Aggiorna i dati correnti per tutte le pagine
+            let updateIndex = 0;
+            const updateNext = () => {
+                if (updateIndex >= images.length) {
+                    hideProgress();
+                    cancelCrop();
+                    selectImage(selectedIndex);
+                    alert('✅ Ritaglio applicato a tutte le pagine!');
+                    return;
+                }
+                
+                const tempIndex = selectedIndex;
+                selectedIndex = updateIndex;
+                updateCurrentData();
+                selectedIndex = tempIndex;
+                
+                updateIndex++;
+                setTimeout(updateNext, 10);
+            };
+            
+            updateNext();
+        }
+
+        function resetCurrentCrop() {
+            if (selectedIndex === null) return;
+            
+            if (!confirm('Ripristinare il ritaglio originale di questa pagina?')) {
+                return;
+            }
+            
+            saveHistory();
+            
+            const img = images[selectedIndex];
+            
+            // Ripristina alle dimensioni originali
+            img.cropX = 0;
+            img.cropY = 0;
+            img.cropWidth = img.width;
+            img.cropHeight = img.height;
+            
+            updateCurrentData();
+            
+            if (cropMode) {
+                cancelCrop();
+            }
+            
+            alert('✅ Ritaglio ripristinato!');
         }
 
         function autoStraighten() {

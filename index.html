@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Spartiti PDF Editor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
@@ -10,6 +10,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -18,6 +19,7 @@
             color: #fff;
             height: 100vh;
             overflow: hidden;
+            touch-action: none;
         }
 
         .header {
@@ -432,6 +434,7 @@
             display: none;
             min-width: 50px;
             min-height: 50px;
+            touch-action: none;
         }
 
         .crop-overlay.active {
@@ -440,21 +443,21 @@
 
         .crop-handle {
             position: absolute;
-            width: 10px;
-            height: 10px;
+            width: 20px;
+            height: 20px;
             background: #10b981;
             border: 2px solid white;
             border-radius: 50%;
         }
 
-        .crop-handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
-        .crop-handle.ne { top: -5px; right: -5px; cursor: ne-resize; }
-        .crop-handle.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
-        .crop-handle.se { bottom: -5px; right: -5px; cursor: se-resize; }
-        .crop-handle.n { top: -5px; left: 50%; margin-left: -5px; cursor: n-resize; }
-        .crop-handle.s { bottom: -5px; left: 50%; margin-left: -5px; cursor: s-resize; }
-        .crop-handle.w { top: 50%; left: -5px; margin-top: -5px; cursor: w-resize; }
-        .crop-handle.e { top: 50%; right: -5px; margin-top: -5px; cursor: e-resize; }
+        .crop-handle.nw { top: -10px; left: -10px; cursor: nw-resize; }
+        .crop-handle.ne { top: -10px; right: -10px; cursor: ne-resize; }
+        .crop-handle.sw { bottom: -10px; left: -10px; cursor: sw-resize; }
+        .crop-handle.se { bottom: -10px; right: -10px; cursor: se-resize; }
+        .crop-handle.n { top: -10px; left: 50%; margin-left: -10px; cursor: n-resize; }
+        .crop-handle.s { bottom: -10px; left: 50%; margin-left: -10px; cursor: s-resize; }
+        .crop-handle.w { top: 50%; left: -10px; margin-top: -10px; cursor: w-resize; }
+        .crop-handle.e { top: 50%; right: -10px; margin-top: -10px; cursor: e-resize; }
 
         .progress-overlay {
             position: fixed;
@@ -742,7 +745,6 @@
         const zoomValue = document.getElementById('zoomValue');
         const thumbZoom = document.getElementById('thumbZoom');
 
-        // Tutti i pulsanti undo
         const undoButtons = [
             document.getElementById('undoBtn1'),
             document.getElementById('undoBtn2'),
@@ -801,12 +803,43 @@
         zoomSlider.addEventListener('input', handleZoom);
         thumbZoom.addEventListener('input', handleThumbZoom);
         
-        // Tutti gli undo buttons fanno la stessa cosa
         undoButtons.forEach(btn => btn.addEventListener('click', undo));
 
+        // Eventi MOUSE per desktop
         cropOverlay.addEventListener('mousedown', startCropDrag);
         document.addEventListener('mousemove', handleCropDrag);
         document.addEventListener('mouseup', endCropDrag);
+
+        // Eventi TOUCH per iPad
+        cropOverlay.addEventListener('touchstart', startCropDragTouch, { passive: false });
+        document.addEventListener('touchmove', handleCropDragTouch, { passive: false });
+        document.addEventListener('touchend', endCropDrag);
+
+        // Funzione per applicare filtri manualmente ai pixel
+        function applyManualFilters(imageData, contrast, brightness) {
+            const data = imageData.data;
+            const contrastFactor = (contrast / 100);
+            const brightnessFactor = (brightness / 100);
+            
+            for (let i = 0; i < data.length; i += 4) {
+                // Applica contrasto
+                data[i] = ((data[i] / 255 - 0.5) * contrastFactor + 0.5) * 255;
+                data[i + 1] = ((data[i + 1] / 255 - 0.5) * contrastFactor + 0.5) * 255;
+                data[i + 2] = ((data[i + 2] / 255 - 0.5) * contrastFactor + 0.5) * 255;
+                
+                // Applica luminosità
+                data[i] *= brightnessFactor;
+                data[i + 1] *= brightnessFactor;
+                data[i + 2] *= brightnessFactor;
+                
+                // Clamp valori 0-255
+                data[i] = Math.min(255, Math.max(0, data[i]));
+                data[i + 1] = Math.min(255, Math.max(0, data[i + 1]));
+                data[i + 2] = Math.min(255, Math.max(0, data[i + 2]));
+            }
+            
+            return imageData;
+        }
 
         async function compressImage(file) {
             return new Promise((resolve) => {
@@ -983,15 +1016,33 @@
             cropOverlay.style.height = cropData.height + 'px';
         }
 
+        function getEventCoords(e) {
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function startCropDragTouch(e) {
+            e.preventDefault();
+            const coords = getEventCoords(e);
+            startCropDragCommon(coords.x, coords.y);
+        }
+
         function startCropDrag(e) {
             e.preventDefault();
-            
+            startCropDragCommon(e.clientX, e.clientY);
+        }
+
+        function startCropDragCommon(clientX, clientY) {
             const rect = cropOverlay.getBoundingClientRect();
+            
             const handles = cropOverlay.querySelectorAll('.crop-handle');
             for (const handle of handles) {
                 const handleRect = handle.getBoundingClientRect();
-                if (e.clientX >= handleRect.left && e.clientX <= handleRect.right &&
-                    e.clientY >= handleRect.top && e.clientY <= handleRect.bottom) {
+                const margin = 10;
+                if (clientX >= handleRect.left - margin && clientX <= handleRect.right + margin &&
+                    clientY >= handleRect.top - margin && clientY <= handleRect.bottom + margin) {
                     isResizingCrop = true;
                     resizeHandle = handle.className.split(' ')[1];
                     break;
@@ -1002,19 +1053,29 @@
                 isDraggingCrop = true;
             }
             
-            dragStartX = e.clientX;
-            dragStartY = e.clientY;
+            dragStartX = clientX;
+            dragStartY = clientY;
             cropStartX = cropData.x;
             cropStartY = cropData.y;
             cropStartWidth = cropData.width;
             cropStartHeight = cropData.height;
         }
 
+        function handleCropDragTouch(e) {
+            if (!isDraggingCrop && !isResizingCrop) return;
+            e.preventDefault();
+            const coords = getEventCoords(e);
+            handleCropDragCommon(coords.x, coords.y);
+        }
+
         function handleCropDrag(e) {
             if (!isDraggingCrop && !isResizingCrop) return;
-            
-            const dx = e.clientX - dragStartX;
-            const dy = e.clientY - dragStartY;
+            handleCropDragCommon(e.clientX, e.clientY);
+        }
+
+        function handleCropDragCommon(clientX, clientY) {
+            const dx = clientX - dragStartX;
+            const dy = clientY - dragStartY;
             
             if (isDraggingCrop) {
                 cropData.x = cropStartX + dx;
@@ -1343,38 +1404,46 @@
                 const canvas = previewCanvas;
                 const ctx = canvas.getContext('2d');
 
+                // DIMENSIONI ORIGINALI - il canvas NON si espande
                 let finalWidth = img.cropWidth;
                 let finalHeight = img.cropHeight;
 
-                const totalRotation = img.rotation + img.fineRotation;
-                const rad = totalRotation * Math.PI / 180;
-                const cos = Math.abs(Math.cos(rad));
-                const sin = Math.abs(Math.sin(rad));
-                
-                const rotatedWidth = finalWidth * cos + finalHeight * sin;
-                const rotatedHeight = finalWidth * sin + finalHeight * cos;
+                canvas.width = finalWidth;
+                canvas.height = finalHeight;
 
-                canvas.width = rotatedWidth;
-                canvas.height = rotatedHeight;
-
-                canvas.style.width = (rotatedWidth * currentZoom) + 'px';
-                canvas.style.height = (rotatedHeight * currentZoom) + 'px';
+                canvas.style.width = (finalWidth * currentZoom) + 'px';
+                canvas.style.height = (finalHeight * currentZoom) + 'px';
 
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                ctx.save();
-                ctx.translate(rotatedWidth / 2, rotatedHeight / 2);
-                ctx.rotate(rad);
+                // Disegna su canvas temporaneo per applicare filtri
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = finalWidth;
+                tempCanvas.height = finalHeight;
+                const tempCtx = tempCanvas.getContext('2d');
                 
-                ctx.filter = `contrast(${img.contrast}%) brightness(${img.brightness}%)`;
-                
-                ctx.drawImage(
+                tempCtx.drawImage(
                     image,
                     img.cropX, img.cropY, img.cropWidth, img.cropHeight,
-                    -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight
+                    0, 0, finalWidth, finalHeight
                 );
-                
+
+                // Applica filtri manuali
+                if (img.contrast !== 100 || img.brightness !== 100) {
+                    const imageData = tempCtx.getImageData(0, 0, finalWidth, finalHeight);
+                    const filteredData = applyManualFilters(imageData, img.contrast, img.brightness);
+                    tempCtx.putImageData(filteredData, 0, 0);
+                }
+
+                // Ora ruota il contenuto filtrato
+                const totalRotation = img.rotation + img.fineRotation;
+                const rad = totalRotation * Math.PI / 180;
+
+                ctx.save();
+                ctx.translate(finalWidth / 2, finalHeight / 2);
+                ctx.rotate(rad);
+                ctx.drawImage(tempCanvas, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
                 ctx.restore();
 
                 canvas.style.display = 'block';
@@ -1445,29 +1514,40 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
 
-                const totalRotation = img.rotation + img.fineRotation;
-                const rad = totalRotation * Math.PI / 180;
-                const cos = Math.abs(Math.cos(rad));
-                const sin = Math.abs(Math.sin(rad));
-                
-                const rotatedWidth = img.cropWidth * cos + img.cropHeight * sin;
-                const rotatedHeight = img.cropWidth * sin + img.cropHeight * cos;
+                const finalWidth = img.cropWidth;
+                const finalHeight = img.cropHeight;
 
-                canvas.width = rotatedWidth;
-                canvas.height = rotatedHeight;
+                canvas.width = finalWidth;
+                canvas.height = finalHeight;
 
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                ctx.save();
-                ctx.translate(rotatedWidth / 2, rotatedHeight / 2);
-                ctx.rotate(rad);
-                ctx.filter = `contrast(${img.contrast}%) brightness(${img.brightness}%)`;
-                ctx.drawImage(
+                // Canvas temporaneo per filtri
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = finalWidth;
+                tempCanvas.height = finalHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                tempCtx.drawImage(
                     image,
                     img.cropX, img.cropY, img.cropWidth, img.cropHeight,
-                    -img.cropWidth / 2, -img.cropHeight / 2, img.cropWidth, img.cropHeight
+                    0, 0, finalWidth, finalHeight
                 );
+
+                if (img.contrast !== 100 || img.brightness !== 100) {
+                    const imageData = tempCtx.getImageData(0, 0, finalWidth, finalHeight);
+                    const filteredData = applyManualFilters(imageData, img.contrast, img.brightness);
+                    tempCtx.putImageData(filteredData, 0, 0);
+                }
+
+                const totalRotation = img.rotation + img.fineRotation;
+                const rad = totalRotation * Math.PI / 180;
+
+                ctx.save();
+                ctx.translate(finalWidth / 2, finalHeight / 2);
+                ctx.rotate(rad);
+                ctx.drawImage(tempCanvas, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
                 ctx.restore();
 
                 img.currentData = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);

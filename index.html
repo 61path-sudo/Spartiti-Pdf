@@ -4,18 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Spartiti PDF Editor</title>
-    
-    <!-- PWA Configuration -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Spartiti PDF">
-    <meta name="theme-color" content="#667eea">
-    
-    <!-- App Icons -->
-    <link rel="apple-touch-icon" href="icon-180.png">
-    <link rel="icon" type="image/png" href="icon-180.png">
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script>
+        // Verifica caricamento librerie
+        window.addEventListener('load', () => {
+            console.log('✅ jsPDF:', typeof window.jspdf !== 'undefined');
+            console.log('✅ PDF.js:', typeof pdfjsLib !== 'undefined');
+            console.log('✅ pdf-lib:', typeof PDFLib !== 'undefined');
+            
+            if (typeof PDFLib === 'undefined') {
+                alert('⚠️ Errore: pdf-lib non si è caricato. Verifica la connessione internet.');
+            }
+        });
+    </script>
     <style>
         * {
             margin: 0;
@@ -152,6 +155,9 @@
 
         .sidebar {
             width: 280px;
+            min-width: 280px;
+            max-width: 280px;
+            flex-shrink: 0;
             background: #2a2a2a;
             border-right: 1px solid #444;
             display: flex;
@@ -219,6 +225,16 @@
         .thumbnail-item.selected {
             border-color: #10b981;
             box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+        }
+        
+        .thumbnail-item.multi-selected {
+            border-color: #3b82f6;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+        
+        .thumbnail-item.multi-selected.selected {
+            border-color: #10b981;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5), 0 0 10px rgba(59, 130, 246, 0.3);
         }
 
         .thumbnail-item.dragging {
@@ -555,13 +571,19 @@
         <div class="header-buttons">
             <label class="file-label btn-primary">
                 📤 Carica
-                <input type="file" id="fileInput" multiple accept="image/*">
+                <input type="file" id="fileInput" multiple accept="image/*,application/pdf">
             </label>
             <button id="convertBtn" class="btn-success" style="display: none;">
                 💾 PDF (<span id="pageCount">0</span>)
             </button>
             <button id="clearBtn" class="btn-danger" style="display: none;">
                 🗑️
+            </button>
+            <button id="undoBtn" class="btn-secondary" style="display: none; opacity: 0.5;" disabled title="Annulla (Ctrl+Z)">
+                ↶ Undo
+            </button>
+            <button id="redoBtn" class="btn-secondary" style="display: none; opacity: 0.5;" disabled title="Ripristina (Ctrl+Y)">
+                ↷ Redo
             </button>
         </div>
     </div>
@@ -570,6 +592,11 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <h3>PAGINE (<span id="thumbCount">0</span>)</h3>
+                <div id="selectionInfo" style="display: none; font-size: 11px; color: #10b981; margin-top: 5px;">
+                    <span id="selectionCount">0</span> selezionate
+                    <button id="deleteSelectedBtn" class="btn-danger" style="font-size: 10px; padding: 3px 8px; margin-left: 10px;">🗑️ Elimina</button>
+                    <button id="deselectAllBtn" class="btn-secondary" style="font-size: 10px; padding: 3px 8px;">✕ Deseleziona</button>
+                </div>
                 <div class="sidebar-controls">
                     <label style="font-size: 10px; color: #888;">Zoom:</label>
                     <input type="range" id="thumbZoom" min="100" max="300" value="150" step="50" style="width: 70px; flex: 1;">
@@ -599,10 +626,6 @@
                     </div>
                     <button class="tool-btn" id="gridBtn" title="Griglia">⊞</button>
                 </div>
-
-                <div class="tool-group">
-                    <button class="tool-btn" id="undoBtn1" title="Annulla" style="background: #ef4444;">↶</button>
-                </div>
             </div>
 
             <div class="tab-content" id="crop-tab">
@@ -613,16 +636,7 @@
                 </div>
 
                 <div class="tool-group">
-                    <button class="tool-btn" id="applyToAllBtn" title="Applica questo ritaglio a tutte le pagine" style="display: none; background: #3b82f6; font-size: 11px; padding: 6px 8px;">Applica a tutte</button>
-                    <button class="tool-btn" id="resetCropBtn" title="Ripristina ritaglio originale" style="font-size: 11px; padding: 6px 8px;">Ripristina</button>
-                </div>
-
-                <div class="tool-group">
                     <button class="tool-btn" id="autoStraighten" title="Auto-raddrizza">📐</button>
-                </div>
-
-                <div class="tool-group">
-                    <button class="tool-btn" id="undoBtn2" title="Annulla" style="background: #ef4444;">↶</button>
                 </div>
             </div>
 
@@ -642,10 +656,6 @@
                         <span class="slider-value" id="brightnessValue" data-slider="brightness">100%</span>
                     </div>
                 </div>
-
-                <div class="tool-group">
-                    <button class="tool-btn" id="undoBtn3" title="Annulla" style="background: #ef4444;">↶</button>
-                </div>
             </div>
 
             <div class="tab-content" id="zoom-tab">
@@ -655,10 +665,6 @@
                         <input type="range" id="zoomSlider" min="25" max="200" value="100" step="1">
                         <span class="slider-value" id="zoomValue" data-slider="zoomSlider">100%</span>
                     </div>
-                </div>
-
-                <div class="tool-group">
-                    <button class="tool-btn" id="undoBtn4" title="Annulla" style="background: #ef4444;">↶</button>
                 </div>
             </div>
 
@@ -684,9 +690,21 @@
                 </div>
             </div>
 
-            <div class="settings-info">
-                💡 Qualità <span id="qualityInfo">60%</span> • Max <span id="widthInfo">1500px</span> • 
-                Stima: <span id="sizeInfo">-- MB</span>
+            <div class="settings-info" style="display: flex; align-items: center; gap: 15px; padding: 8px 15px;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 11px;">💡 Qualità:</span>
+                    <input type="range" id="qualitySlider" min="50" max="100" value="60" step="5" style="width: 80px;">
+                    <span id="qualityInfo" style="font-weight: bold; min-width: 35px;">60%</span>
+                    <span id="qualityNote" style="font-size: 9px; color: #888; margin-left: 5px;"></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 11px;">Max:</span>
+                    <span id="widthInfo" style="font-weight: bold;">2400px</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 11px;">Stima:</span>
+                    <span id="sizeInfo" style="font-weight: bold;">-- MB</span>
+                </div>
             </div>
         </div>
     </div>
@@ -702,11 +720,16 @@
     </div>
 
     <script>
-        const COMPRESSION_QUALITY = 0.6;
-        const MAX_WIDTH = 1500;
+        let COMPRESSION_QUALITY = 0.6;
+        const MAX_WIDTH = 2400;  // Aumentato per spartiti ad alta qualità (era 1500)
 
-        let images = [];
+        let images = [];  // Ora contiene sia pagine PDF che immagini
+        let pdfDocument = null;  // Documento PDF originale (pdf-lib)
+        let pdfArrayBuffer = null;  // Uint8Array del PDF originale (più sicuro di ArrayBuffer)
+        let isPdfProtected = false;  // 🔑 Traccia se il PDF è protetto
         let selectedIndex = null;
+        let selectedIndices = [];  // Array di indici selezionati
+        let lastSelectedIndex = null;  // Per Shift+Click range selection
         let draggedIndex = null;
         let totalCompressedSize = 0;
         let editHistory = [];
@@ -725,11 +748,26 @@
         let cropStartY = 0;
         let cropStartWidth = 0;
         let cropStartHeight = 0;
+        let showCompressedPreview = false;  // Nuova variabile per modalità preview
+        let isRendering = false;  // Flag per evitare rendering multipli simultanei
+        
+        // Sistema di History per Undo/Redo
+        let historyStack = [];
+        let historyIndex = -1;
+        let isRestoringState = false;  // 🔑 Flag per evitare loop durante UNDO/REDO
+        let isConvertingPDF = false;  // 🔑 Flag per tracciare conversione PDF in background
+        const MAX_HISTORY = 50;
 
         const fileInput = document.getElementById('fileInput');
         const convertBtn = document.getElementById('convertBtn');
         const clearBtn = document.getElementById('clearBtn');
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
         const renumberBtn = document.getElementById('renumberBtn');
+        const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+        const deselectAllBtn = document.getElementById('deselectAllBtn');
+        const selectionInfo = document.getElementById('selectionInfo');
+        const selectionCount = document.getElementById('selectionCount');
         const thumbnailsContainer = document.getElementById('thumbnailsContainer');
         const pageCount = document.getElementById('pageCount');
         const thumbCount = document.getElementById('thumbCount');
@@ -751,8 +789,6 @@
         const cropBtn = document.getElementById('cropBtn');
         const applyCropBtn = document.getElementById('applyCropBtn');
         const cancelCropBtn = document.getElementById('cancelCropBtn');
-        const applyToAllBtn = document.getElementById('applyToAllBtn');
-        const resetCropBtn = document.getElementById('resetCropBtn');
         const gridBtn = document.getElementById('gridBtn');
         const autoStraightenBtn = document.getElementById('autoStraighten');
         const contrastSlider = document.getElementById('contrast');
@@ -762,22 +798,30 @@
         const zoomSlider = document.getElementById('zoomSlider');
         const zoomValue = document.getElementById('zoomValue');
         const thumbZoom = document.getElementById('thumbZoom');
-
-        const undoButtons = [
-            document.getElementById('undoBtn1'),
-            document.getElementById('undoBtn2'),
-            document.getElementById('undoBtn3'),
-            document.getElementById('undoBtn4')
-        ];
+        const qualitySlider = document.getElementById('qualitySlider');
+        const qualityInfo = document.getElementById('qualityInfo');
 
         // Tabs
         document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', () => {
+            tab.addEventListener('click', async () => {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 
                 tab.classList.add('active');
                 document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+                
+                // 🔑 Pre-converti SOLO i PDF protetti (i non protetti si convertono solo se modifichi)
+                const tabName = tab.dataset.tab;
+                if ((tabName === 'rotation' || tabName === 'colors') && selectedIndex !== null) {
+                    const img = images[selectedIndex];
+                    if (img && img.type === 'pdf' && isPdfProtected) {
+                        console.log('🔄 Pre-conversione PDF PROTETTO per modifiche...');
+                        isConvertingPDF = true;
+                        await convertPDFToImage(selectedIndex);
+                        isConvertingPDF = false;
+                        console.log('✅ PDF protetto pronto per le modifiche!');
+                    }
+                }
             });
         });
 
@@ -806,24 +850,61 @@
         fileInput.addEventListener('change', handleFileSelect);
         convertBtn.addEventListener('click', convertToPDF);
         clearBtn.addEventListener('click', clearAll);
+        undoBtn.addEventListener('click', undo);
+        redoBtn.addEventListener('click', redo);
         renumberBtn.addEventListener('click', renumberPages);
+        deleteSelectedBtn.addEventListener('click', deleteSelectedPages);
+        deselectAllBtn.addEventListener('click', deselectAll);
+        
+        // Keyboard shortcuts per undo/redo
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            } else if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z' || e.key === 'y')) {
+                e.preventDefault();
+                redo();
+            } else if (e.key === 'Delete' && selectedIndices.length > 0) {
+                e.preventDefault();
+                deleteSelectedPages();
+            } else if (e.key === 'Escape' && selectedIndices.length > 0) {
+                e.preventDefault();
+                deselectAll();
+            }
+        });
 
         rotateLeftBtn.addEventListener('click', () => rotateImage(-90));
         rotateRightBtn.addEventListener('click', () => rotateImage(90));
-        fineRotation.addEventListener('input', handleFineRotation);
+        
+        // Salva lo stato PRIMA di iniziare a trascinare
+        fineRotation.addEventListener('mousedown', saveStateBeforeChange);
+        fineRotation.addEventListener('touchstart', saveStateBeforeChange);
+        fineRotation.addEventListener('input', handleFineRotationPreview);
+        
         cropBtn.addEventListener('click', toggleCropMode);
         applyCropBtn.addEventListener('click', applyCrop);
         cancelCropBtn.addEventListener('click', cancelCrop);
-        applyToAllBtn.addEventListener('click', applyCurrentCropToAll);
-        resetCropBtn.addEventListener('click', resetCurrentCrop);
         gridBtn.addEventListener('click', toggleGrid);
         autoStraightenBtn.addEventListener('click', autoStraighten);
-        contrastSlider.addEventListener('input', updateFilters);
-        brightnessSlider.addEventListener('input', updateFilters);
+        
+        // Salva lo stato PRIMA di iniziare a trascinare
+        contrastSlider.addEventListener('mousedown', saveStateBeforeChange);
+        contrastSlider.addEventListener('touchstart', saveStateBeforeChange);
+        contrastSlider.addEventListener('input', updateFiltersPreview);
+        
+        brightnessSlider.addEventListener('mousedown', saveStateBeforeChange);
+        brightnessSlider.addEventListener('touchstart', saveStateBeforeChange);
+        brightnessSlider.addEventListener('input', updateFiltersPreview);
         zoomSlider.addEventListener('input', handleZoom);
         thumbZoom.addEventListener('input', handleThumbZoom);
+        qualitySlider.addEventListener('change', handleQualityChange);
+        qualitySlider.addEventListener('input', (e) => {
+            // Aggiorna solo il testo durante il movimento
+            document.getElementById('qualityInfo').textContent = e.target.value + '%';
+        });
         
-        undoButtons.forEach(btn => btn.addEventListener('click', undo));
+        // Navigazione con tastiera
+        document.addEventListener('keydown', handleKeyboardNavigation);
 
         // Eventi MOUSE per desktop
         cropOverlay.addEventListener('mousedown', startCropDrag);
@@ -880,17 +961,30 @@
                         canvas.height = height;
 
                         const ctx = canvas.getContext('2d');
+                        
+                        // Usa interpolazione di alta qualità
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+                        
                         ctx.fillStyle = 'white';
                         ctx.fillRect(0, 0, width, height);
                         ctx.drawImage(img, 0, 0, width, height);
 
+                        // Salva originale SEMPRE a qualità massima (98%)
+                        const originalDataUrl = canvas.toDataURL('image/jpeg', 0.98);
+                        
+                        // Crea versione compressa con qualità attuale per la preview
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
+                        
+                        // Calcola dimensione della versione compressa
                         canvas.toBlob((blob) => {
                             resolve({
                                 blob: blob,
-                                dataUrl: canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY),
+                                originalDataUrl: originalDataUrl,  // Originale SEMPRE 98%
+                                dataUrl: compressedDataUrl,  // Versione compressa per preview
                                 width: width,
                                 height: height,
-                                size: blob.size
+                                size: blob.size  // Dimensione della versione compressa
                             });
                         }, 'image/jpeg', COMPRESSION_QUALITY);
                     };
@@ -902,46 +996,223 @@
 
         async function handleFileSelect(e) {
             const files = Array.from(e.target.files);
-            const imageFiles = files.filter(file => file.type.startsWith('image/'));
-
-            if (imageFiles.length === 0) return;
+            
+            if (files.length === 0) return;
 
             showProgress('Caricamento...', 0);
 
-            for (let i = 0; i < imageFiles.length; i++) {
-                const file = imageFiles[i];
-                const progress = ((i + 1) / imageFiles.length) * 100;
-                updateProgress(progress, `${i + 1}/${imageFiles.length}`);
-
-                const compressed = await compressImage(file);
+            let fileIndex = 0;
+            for (const file of files) {
+                fileIndex++;
+                const progress = (fileIndex / files.length) * 100;
+                updateProgress(progress, `${fileIndex}/${files.length}`);
                 
-                images.push({
-                    id: Date.now() + Math.random(),
-                    originalNumber: images.length + 1,
-                    file: file,
-                    originalData: compressed.dataUrl,
-                    currentData: compressed.dataUrl,
-                    width: compressed.width,
-                    height: compressed.height,
-                    originalSize: file.size,
-                    compressedSize: compressed.size,
-                    rotation: 0,
-                    fineRotation: 0,
-                    contrast: 100,
-                    brightness: 100,
-                    cropX: 0,
-                    cropY: 0,
-                    cropWidth: compressed.width,
-                    cropHeight: compressed.height
-                });
+                if (file.type === 'application/pdf') {
+                    // Processa PDF
+                    await processPDF(file);
+                } else if (file.type.startsWith('image/')) {
+                    // Processa immagine normale
+                    const compressed = await compressImage(file);
+                    
+                    images.push({
+                        id: Date.now() + Math.random(),
+                        originalNumber: images.length + 1,
+                        file: file,
+                        originalData: compressed.originalDataUrl,  // Originale SEMPRE 98%
+                        currentData: compressed.dataUrl,  // Versione compressa per preview
+                        width: compressed.width,
+                        height: compressed.height,
+                        originalSize: file.size,
+                        compressedSize: compressed.size,
+                        rotation: 0,
+                        fineRotation: 0,
+                        contrast: 100,
+                        brightness: 100,
+                        cropX: 0,
+                        cropY: 0,
+                        cropWidth: compressed.width,
+                        cropHeight: compressed.height
+                    });
+                    
+                    // Log per debug
+                    console.log(`File: ${file.name}`);
+                    console.log(`- Originale: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+                    console.log(`- Compressa (${(COMPRESSION_QUALITY * 100)}%): ${(compressed.size / 1024 / 1024).toFixed(2)} MB`);
+                    console.log(`- Dimensioni: ${compressed.width}x${compressed.height}px`);
 
-                totalCompressedSize += compressed.size;
+                    totalCompressedSize += compressed.size;
+                }
             }
 
             hideProgress();
             fileInput.value = '';
             updateUI();
             updateSizeEstimate();
+            
+            // Salva lo stato iniziale solo se sono state aggiunte nuove immagini
+            if (files.length > 0) {
+                saveHistoryState();
+            }
+        }
+
+        async function processPDF(file) {
+            try {
+                console.log('1. Inizio processPDF...');
+                const arrayBuffer = await file.arrayBuffer();
+                console.log('2. ArrayBuffer ottenuto:', arrayBuffer.byteLength, 'bytes');
+                
+                // Salva come Uint8Array per evitare detachment
+                pdfArrayBuffer = new Uint8Array(arrayBuffer);
+                console.log('3. pdfArrayBuffer salvato come Uint8Array per uso futuro');
+                
+                // Crea copia per pdf-lib
+                const pdfLibBuffer = new Uint8Array(arrayBuffer);
+                console.log('4. Copia per pdf-lib creata');
+                
+                // Carica il PDF con pdf-lib per manipolazione nativa
+                console.log('5. Caricamento pdf-lib...');
+                if (!window.PDFLib) {
+                    throw new Error('pdf-lib non caricato! Verifica la connessione internet.');
+                }
+                
+                const { PDFDocument } = PDFLib;
+                console.log('6. PDFDocument disponibile');
+                
+                pdfDocument = await PDFDocument.load(pdfLibBuffer, { ignoreEncryption: true });
+                console.log('7. PDF caricato con pdf-lib (encryption ignorata se presente)');
+                
+                const numPages = pdfDocument.getPageCount();
+                console.log(`8. Numero pagine: ${numPages}`);
+                
+                // 🔑 TEST MIGLIORATO: Controlla sia encryption che copyPages
+                // Alcuni PDF hanno encryption che produce pagine vuote anche se copyPages non va in errore
+                let hasEncryption = false;
+                try {
+                    // Prova a vedere se il PDF originale aveva encryption
+                    const testBuffer = new Uint8Array(arrayBuffer);
+                    const testPdf = await PDFDocument.load(testBuffer); // SENZA ignoreEncryption
+                    hasEncryption = false;
+                } catch (error) {
+                    if (error.message.includes('encrypted') || error.message.includes('encryption')) {
+                        hasEncryption = true;
+                        console.log('🔒 PDF con encryption rilevata');
+                    }
+                }
+                
+                // Test copyPages
+                let copyPagesWorks = false;
+                try {
+                    const testPdf = await PDFDocument.create();
+                    await testPdf.copyPages(pdfDocument, [0]);
+                    copyPagesWorks = true;
+                    console.log('✅ copyPages verso nuovo PDF tecnicamente funziona');
+                } catch (error) {
+                    console.log('❌ copyPages verso nuovo PDF fallisce:', error.message);
+                }
+                
+                // Considera protetto se ha encryption O se copyPages non funziona
+                isPdfProtected = hasEncryption || !copyPagesWorks;
+                
+                console.log(`📄 PDF caricato: ${numPages} pagine, ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+                if (isPdfProtected) {
+                    console.log(`🔒 PDF PROTETTO (encryption: ${hasEncryption}, copyPages: ${copyPagesWorks}) - Userò conversione in immagini ad alta qualità`);
+                } else {
+                    console.log(`✅ PDF NON protetto - Mantenimento qualità originale`);
+                }
+                
+                showProgress(`Importazione PDF (${numPages} pagine)...`, 0);
+                
+                // Crea una nuova copia per pdf.js (per le thumbnail)
+                console.log('9. Creazione copia per pdf.js...');
+                const pdfJsBuffer = new Uint8Array(pdfArrayBuffer);
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                const pdfJsDoc = await pdfjsLib.getDocument({ data: pdfJsBuffer }).promise;
+                console.log('10. PDF.js caricato');
+                
+                for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                    updateProgress((pageNum / numPages) * 100, `Pagina ${pageNum}/${numPages}`);
+                    
+                    console.log(`11. Processando pagina ${pageNum}...`);
+                    
+                    // Ottieni dimensioni della pagina per la preview
+                    const page = await pdfJsDoc.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: 1.0 });
+                    
+                    console.log(`12. Viewport pagina ${pageNum}:`, viewport.width, 'x', viewport.height);
+                    
+                    // Crea thumbnail a bassa risoluzione SOLO per la sidebar
+                    const scale = 0.5;  // Bassa risoluzione per thumbnail
+                    const thumbViewport = page.getViewport({ scale: scale });
+                    const thumbCanvas = document.createElement('canvas');
+                    thumbCanvas.width = thumbViewport.width;
+                    thumbCanvas.height = thumbViewport.height;
+                    const thumbCtx = thumbCanvas.getContext('2d');
+                    
+                    thumbCtx.fillStyle = 'white';
+                    thumbCtx.fillRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+                    
+                    await page.render({
+                        canvasContext: thumbCtx,
+                        viewport: thumbViewport
+                    }).promise;
+                    
+                    const thumbnailData = thumbCanvas.toDataURL('image/jpeg', 0.7);
+                    
+                    console.log(`13. Thumbnail pagina ${pageNum} creata`);
+                    
+                    // Salva la pagina come riferimento PDF nativo
+                    images.push({
+                        id: Date.now() + Math.random(),
+                        originalNumber: images.length + 1,
+                        type: 'pdf',  // Tipo PDF nativo
+                        pageIndex: pageNum - 1,  // Indice nel PDF originale
+                        file: null,
+                        
+                        // Dimensioni originali
+                        width: Math.round(viewport.width),
+                        height: Math.round(viewport.height),
+                        
+                        // Thumbnail per sidebar
+                        thumbnailData: thumbnailData,
+                        
+                        // Nessun dato immagine (rimane PDF)
+                        originalData: null,
+                        currentData: null,
+                        
+                        // Dimensioni stimate
+                        originalSize: Math.round(file.size / numPages),
+                        compressedSize: Math.round(file.size / numPages),
+                        
+                        // Parametri
+                        rotation: 0,
+                        fineRotation: 0,
+                        contrast: 100,
+                        brightness: 100,
+                        cropX: 0,
+                        cropY: 0,
+                        cropWidth: Math.round(viewport.width),
+                        cropHeight: Math.round(viewport.height),
+                        
+                        // Flag per conversione
+                        needsConversion: false  // Diventa true se applichi filtri/crop
+                    });
+                    
+                    totalCompressedSize += Math.round(file.size / numPages);
+                }
+                
+                console.log(`✅ ${numPages} pagine importate come PDF nativi`);
+                console.log(`💾 Dimensione totale: ${(file.size / 1024 / 1024).toFixed(2)} MB (invariata)`);
+                
+                hideProgress();
+                updateUI();
+                saveHistoryState(); // Salva lo stato iniziale dopo l'importazione
+                
+            } catch (error) {
+                console.error('❌ Errore importazione PDF:', error);
+                console.error('Stack trace:', error.stack);
+                hideProgress();
+                alert('❌ Errore nell\'importazione del PDF: ' + error.message);
+            }
         }
 
         function handleThumbZoom(e) {
@@ -955,6 +1226,164 @@
             renderPreview();
         }
 
+        async function handleQualityChange(e) {
+            const newQuality = parseInt(e.target.value);
+            COMPRESSION_QUALITY = newQuality / 100;
+            
+            document.getElementById('qualityInfo').textContent = newQuality + '%';
+            
+            // Conta quante pagine sono PDF nativi vs immagini
+            const pdfPages = images.filter(img => img.type === 'pdf').length;
+            const imagePages = images.length - pdfPages;
+            
+            if (pdfPages > 0 && imagePages === 0) {
+                // Solo PDF nativi - non serve ricomprimere!
+                console.log(`ℹ️ Tutte le ${pdfPages} pagine sono PDF nativi - qualità originale mantenuta`);
+                updateSizeEstimate();
+                return;
+            }
+            
+            // Ricomprimi solo le immagini (non i PDF nativi)
+            if (imagePages > 0) {
+                showProgress('Aggiornamento qualità...', 0);
+                
+                totalCompressedSize = 0;
+                
+                for (let i = 0; i < images.length; i++) {
+                    if (images[i].type !== 'pdf') {
+                        // Solo per immagini
+                        updateProgress((i / images.length) * 100, `${i + 1}/${images.length}`);
+                        await recompressImage(i);
+                    } else {
+                        // PDF nativi mantengono la loro dimensione originale
+                        totalCompressedSize += images[i].compressedSize;
+                    }
+                }
+                
+                hideProgress();
+                updateSizeEstimate();
+                
+                // Aggiorna l'anteprima se c'è un'immagine selezionata
+                if (selectedIndex !== null && images[selectedIndex].type !== 'pdf') {
+                    renderPreview();
+                }
+                
+                console.log(`✅ ${imagePages} immagini ricompresse, ${pdfPages} PDF nativi invariati`);
+            } else {
+                updateSizeEstimate();
+            }
+        }
+        
+        async function recompressImage(index) {
+            return new Promise((resolve) => {
+                const img = images[index];
+                const image = new Image();
+                
+                image.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    const finalWidth = img.cropWidth;
+                    const finalHeight = img.cropHeight;
+
+                    canvas.width = finalWidth;
+                    canvas.height = finalHeight;
+
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Canvas temporaneo per filtri
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = finalWidth;
+                    tempCanvas.height = finalHeight;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    tempCtx.drawImage(
+                        image,
+                        img.cropX, img.cropY, img.cropWidth, img.cropHeight,
+                        0, 0, finalWidth, finalHeight
+                    );
+
+                    if (img.contrast !== 100 || img.brightness !== 100) {
+                        const imageData = tempCtx.getImageData(0, 0, finalWidth, finalHeight);
+                        const filteredData = applyManualFilters(imageData, img.contrast, img.brightness);
+                        tempCtx.putImageData(filteredData, 0, 0);
+                    }
+
+                    const totalRotation = img.rotation + img.fineRotation;
+                    const rad = totalRotation * Math.PI / 180;
+
+                    ctx.save();
+                    ctx.translate(finalWidth / 2, finalHeight / 2);
+                    ctx.rotate(rad);
+                    ctx.drawImage(tempCanvas, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
+                    ctx.restore();
+
+                    // Ricomprimi con la nuova qualità
+                    canvas.toBlob((blob) => {
+                        const oldSize = img.compressedSize;
+                        const oldDataUrlLength = img.currentData.length;
+                        
+                        img.currentData = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
+                        img.compressedSize = blob.size;
+                        totalCompressedSize += blob.size;
+                        
+                        const newDataUrlLength = img.currentData.length;
+                        
+                        // Log per debug
+                        console.log(`Immagine ${index + 1} ricompressa:`);
+                        console.log(`- Vecchia: ${(oldSize / 1024).toFixed(1)} KB (${oldDataUrlLength} chars)`);
+                        console.log(`- Nuova: ${(blob.size / 1024).toFixed(1)} KB (${newDataUrlLength} chars) a ${(COMPRESSION_QUALITY * 100)}%`);
+                        console.log(`- DataURL cambiato: ${oldDataUrlLength !== newDataUrlLength} (diff: ${newDataUrlLength - oldDataUrlLength} chars)`);
+                        
+                        // Aggiorna la thumbnail
+                        updateThumbnail(index);
+                        
+                        resolve();
+                    }, 'image/jpeg', COMPRESSION_QUALITY);
+                };
+
+                image.src = img.originalData;
+            });
+        }
+        
+        function updateThumbnail(index) {
+            const thumbImg = thumbnailsContainer.querySelector(`[data-index="${index}"] .thumbnail-img`);
+            if (thumbImg) {
+                thumbImg.src = images[index].currentData;
+            }
+        }
+
+        function handleKeyboardNavigation(e) {
+            if (images.length === 0 || selectedIndex === null) return;
+            
+            // Non intercettare se l'utente sta scrivendo in un input
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                const newIndex = Math.max(0, selectedIndex - 1);
+                if (newIndex !== selectedIndex) {
+                    selectImage(newIndex);
+                    scrollThumbnailIntoView(newIndex);
+                }
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                const newIndex = Math.min(images.length - 1, selectedIndex + 1);
+                if (newIndex !== selectedIndex) {
+                    selectImage(newIndex);
+                    scrollThumbnailIntoView(newIndex);
+                }
+            }
+        }
+
+        function scrollThumbnailIntoView(index) {
+            const thumbnails = thumbnailsContainer.querySelectorAll('.thumbnail-item');
+            if (thumbnails[index]) {
+                thumbnails[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
         function toggleGrid() {
             gridVisible = !gridVisible;
             gridBtn.classList.toggle('active');
@@ -964,17 +1393,26 @@
             }
         }
 
+        function toggleCompressedPreview() {
+            showCompressedPreview = !showCompressedPreview;
+            renderPreview();
+        }
+
         function drawGrid() {
             const canvas = gridOverlay;
             const ctx = canvas.getContext('2d');
             
-            canvas.width = previewCanvas.width * currentZoom;
-            canvas.height = previewCanvas.height * currentZoom;
+            // La griglia deve avere le stesse dimensioni CSS del canvas preview
+            const rect = previewCanvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
             
             ctx.strokeStyle = 'rgba(102, 126, 234, 0.5)';
             ctx.lineWidth = 1;
             
-            const gridSize = 50 * currentZoom;
+            const gridSize = 50;
             
             for (let x = 0; x <= canvas.width; x += gridSize) {
                 ctx.beginPath();
@@ -1022,12 +1460,10 @@
                 cropOverlay.classList.add('active');
                 applyCropBtn.style.display = 'inline-flex';
                 cancelCropBtn.style.display = 'inline-flex';
-                applyToAllBtn.style.display = 'inline-flex';
             } else {
                 cropOverlay.classList.remove('active');
                 applyCropBtn.style.display = 'none';
                 cancelCropBtn.style.display = 'none';
-                applyToAllBtn.style.display = 'none';
             }
         }
 
@@ -1140,12 +1576,18 @@
             resizeHandle = null;
         }
 
-        function applyCrop() {
+        async function applyCrop() {
             if (selectedIndex === null) return;
             
-            saveHistory();
+            saveHistoryState();
             
             const img = images[selectedIndex];
+            
+            // Il crop richiede conversione in immagine
+            if (img.type === 'pdf') {
+                await convertPDFToImage(selectedIndex);
+            }
+            
             const canvasRect = previewCanvas.getBoundingClientRect();
             
             const scaleX = previewCanvas.width / canvasRect.width;
@@ -1166,114 +1608,12 @@
             cropOverlay.classList.remove('active');
             applyCropBtn.style.display = 'none';
             cancelCropBtn.style.display = 'none';
-            applyToAllBtn.style.display = 'none';
-        }
-
-        function applyCurrentCropToAll() {
-            if (selectedIndex === null || !cropMode) return;
-            
-            if (!confirm(`Applicare questo ritaglio a tutte le ${images.length} pagine?`)) {
-                return;
-            }
-            
-            showProgress('Applicazione ritaglio...', 0);
-            
-            // Salva i margini di ritaglio correnti
-            const currentCropX = cropData.x;
-            const currentCropY = cropData.y;
-            const currentCropWidth = cropData.width;
-            const currentCropHeight = cropData.height;
-            
-            // Ottieni le dimensioni della pagina corrente
-            const currentImg = images[selectedIndex];
-            const scaleX = currentImg.cropWidth / (previewCanvas.width * currentZoom);
-            const scaleY = currentImg.cropHeight / (previewCanvas.height * currentZoom);
-            
-            const realX = currentCropX * scaleX;
-            const realY = currentCropY * scaleY;
-            const realWidth = currentCropWidth * scaleX;
-            const realHeight = currentCropHeight * scaleY;
-            
-            // Calcola le proporzioni del ritaglio
-            const leftMargin = realX / currentImg.cropWidth;
-            const topMargin = realY / currentImg.cropHeight;
-            const widthRatio = realWidth / currentImg.cropWidth;
-            const heightRatio = realHeight / currentImg.cropHeight;
-            
-            // Applica a tutte le pagine
-            let processed = 0;
-            images.forEach((img, index) => {
-                // Calcola le nuove dimensioni basate sulle proporzioni
-                const newX = img.cropWidth * leftMargin;
-                const newY = img.cropHeight * topMargin;
-                const newWidth = img.cropWidth * widthRatio;
-                const newHeight = img.cropHeight * heightRatio;
-                
-                // Assicurati che i valori siano validi
-                if (newWidth > 0 && newHeight > 0) {
-                    img.cropX = Math.max(0, Math.min(newX, img.width - newWidth));
-                    img.cropY = Math.max(0, Math.min(newY, img.height - newHeight));
-                    img.cropWidth = newWidth;
-                    img.cropHeight = newHeight;
-                }
-                
-                processed++;
-                updateProgress((processed / images.length) * 100);
-            });
-            
-            // Aggiorna i dati correnti per tutte le pagine
-            let updateIndex = 0;
-            const updateNext = () => {
-                if (updateIndex >= images.length) {
-                    hideProgress();
-                    cancelCrop();
-                    selectImage(selectedIndex);
-                    alert('✅ Ritaglio applicato a tutte le pagine!');
-                    return;
-                }
-                
-                const tempIndex = selectedIndex;
-                selectedIndex = updateIndex;
-                updateCurrentData();
-                selectedIndex = tempIndex;
-                
-                updateIndex++;
-                setTimeout(updateNext, 10);
-            };
-            
-            updateNext();
-        }
-
-        function resetCurrentCrop() {
-            if (selectedIndex === null) return;
-            
-            if (!confirm('Ripristinare il ritaglio originale di questa pagina?')) {
-                return;
-            }
-            
-            saveHistory();
-            
-            const img = images[selectedIndex];
-            
-            // Ripristina alle dimensioni originali
-            img.cropX = 0;
-            img.cropY = 0;
-            img.cropWidth = img.width;
-            img.cropHeight = img.height;
-            
-            updateCurrentData();
-            
-            if (cropMode) {
-                cancelCrop();
-            }
-            
-            alert('✅ Ritaglio ripristinato!');
         }
 
         function autoStraighten() {
             if (selectedIndex === null) return;
             
-            saveHistory();
+            saveHistoryState();
             
             const img = images[selectedIndex];
             const image = new Image();
@@ -1351,6 +1691,8 @@
         }
 
         function duplicatePage(index) {
+            saveHistoryState();
+            
             const original = images[index];
             const duplicate = JSON.parse(JSON.stringify(original));
             duplicate.id = Date.now() + Math.random();
@@ -1368,6 +1710,8 @@
             
             convertBtn.style.display = hasImages ? 'inline-flex' : 'none';
             clearBtn.style.display = hasImages ? 'inline-flex' : 'none';
+            undoBtn.style.display = hasImages ? 'inline-flex' : 'none';
+            redoBtn.style.display = hasImages ? 'inline-flex' : 'none';
             renumberBtn.style.display = hasImages ? 'inline-block' : 'none';
             tabs.classList.toggle('active', selectedIndex !== null);
             
@@ -1376,6 +1720,7 @@
 
             renderThumbnails();
             updateSizeEstimate();
+            updateUndoRedoButtons();
         }
 
         function renderThumbnails() {
@@ -1395,6 +1740,7 @@
                 const item = document.createElement('div');
                 item.className = 'thumbnail-item';
                 if (index === selectedIndex) item.classList.add('selected');
+                if (selectedIndices.includes(index)) item.classList.add('multi-selected');
                 item.draggable = true;
                 item.dataset.index = index;
 
@@ -1406,12 +1752,12 @@
                             <button class="thumb-btn delete" title="Elimina">×</button>
                         </div>
                     </div>
-                    <img src="${img.currentData}" class="thumbnail-img" style="height: ${thumbnailHeight}px;" alt="Pag ${img.originalNumber}">
+                    <img src="${img.type === 'pdf' ? img.thumbnailData : img.currentData}" class="thumbnail-img" style="height: ${thumbnailHeight}px;" alt="Pag ${img.originalNumber}">
                 `;
 
                 item.addEventListener('click', (e) => {
                     if (!e.target.closest('.thumb-btn') && !e.target.classList.contains('page-number')) {
-                        selectImage(index);
+                        handleThumbnailClick(index, e);
                     }
                 });
 
@@ -1468,6 +1814,11 @@
         function handleDragStart(e) {
             draggedIndex = parseInt(e.currentTarget.dataset.index);
             e.currentTarget.classList.add('dragging');
+            
+            // Se l'elemento trascinato è nella selezione multipla, prepara a trascinare tutto il gruppo
+            if (selectedIndices.includes(draggedIndex)) {
+                console.log(`Trascinando ${selectedIndices.length} pagine selezionate`);
+            }
         }
 
         function handleDragOver(e) {
@@ -1479,28 +1830,168 @@
             const dropIndex = parseInt(e.currentTarget.dataset.index);
             
             if (draggedIndex !== null && draggedIndex !== dropIndex) {
-                const draggedImage = images[draggedIndex];
-                images.splice(draggedIndex, 1);
-                images.splice(dropIndex, 0, draggedImage);
+                saveHistoryState();
                 
-                if (selectedIndex === draggedIndex) {
-                    selectedIndex = dropIndex;
-                } else if (selectedIndex === dropIndex) {
-                    selectedIndex = draggedIndex;
+                // Se sto trascinando un elemento della selezione multipla
+                if (selectedIndices.length > 0 && selectedIndices.includes(draggedIndex)) {
+                    // Trascina tutte le pagine selezionate
+                    moveMultiplePages(dropIndex);
+                } else {
+                    // Trascina solo la pagina singola
+                    const draggedImage = images[draggedIndex];
+                    images.splice(draggedIndex, 1);
+                    images.splice(dropIndex, 0, draggedImage);
+                    
+                    if (selectedIndex === draggedIndex) {
+                        selectedIndex = dropIndex;
+                    } else if (selectedIndex === dropIndex) {
+                        selectedIndex = draggedIndex;
+                    }
                 }
                 
                 updateUI();
             }
+        }
+        
+        function moveMultiplePages(dropIndex) {
+            // Ordina gli indici in ordine crescente
+            const sortedIndices = [...selectedIndices].sort((a, b) => a - b);
+            
+            // Estrai tutte le pagine selezionate
+            const selectedPages = sortedIndices.map(idx => images[idx]);
+            
+            // Rimuovi tutte le pagine selezionate dagli indici in ordine decrescente
+            sortedIndices.reverse().forEach(idx => {
+                images.splice(idx, 1);
+            });
+            
+            // Calcola il nuovo indice di inserimento dopo le rimozioni
+            let insertIndex = dropIndex;
+            sortedIndices.forEach(idx => {
+                if (idx < dropIndex) insertIndex--;
+            });
+            
+            // Inserisci tutte le pagine selezionate nella nuova posizione
+            images.splice(insertIndex, 0, ...selectedPages);
+            
+            // Aggiorna selectedIndex se necessario
+            if (selectedIndex !== null && sortedIndices.includes(selectedIndex)) {
+                const offsetInSelection = sortedIndices.indexOf(selectedIndex);
+                selectedIndex = insertIndex + offsetInSelection;
+            }
+            
+            // Aggiorna selectedIndices con i nuovi indici
+            selectedIndices = [];
+            for (let i = 0; i < selectedPages.length; i++) {
+                selectedIndices.push(insertIndex + i);
+            }
+            
+            updateSelectionUI();
         }
 
         function handleDragEnd(e) {
             e.currentTarget.classList.remove('dragging');
             draggedIndex = null;
         }
+        
+        function handleThumbnailClick(index, event) {
+            if (event.ctrlKey || event.metaKey) {
+                // Ctrl+Click: toggle selezione
+                toggleSelection(index);
+            } else if (event.shiftKey && lastSelectedIndex !== null) {
+                // Shift+Click: seleziona range
+                selectRange(lastSelectedIndex, index);
+            } else {
+                // Click normale: selezione singola
+                selectedIndices = [];
+                selectImage(index);
+            }
+            lastSelectedIndex = index;
+            updateSelectionUI();
+        }
+        
+        function toggleSelection(index) {
+            const idx = selectedIndices.indexOf(index);
+            if (idx > -1) {
+                // Deseleziona
+                selectedIndices.splice(idx, 1);
+            } else {
+                // Seleziona
+                selectedIndices.push(index);
+            }
+            updateUI();
+        }
+        
+        function selectRange(start, end) {
+            selectedIndices = [];
+            const from = Math.min(start, end);
+            const to = Math.max(start, end);
+            for (let i = from; i <= to; i++) {
+                selectedIndices.push(i);
+            }
+            updateUI();
+        }
+        
+        function deselectAll() {
+            selectedIndices = [];
+            lastSelectedIndex = null;
+            updateSelectionUI();
+            updateUI();
+        }
+        
+        function updateSelectionUI() {
+            if (selectedIndices.length > 0) {
+                selectionInfo.style.display = 'flex';
+                selectionInfo.style.alignItems = 'center';
+                selectionInfo.style.gap = '10px';
+                selectionCount.textContent = selectedIndices.length;
+            } else {
+                selectionInfo.style.display = 'none';
+            }
+        }
+        
+        function deleteSelectedPages() {
+            if (selectedIndices.length === 0) return;
+            
+            const count = selectedIndices.length;
+            if (!confirm(`Eliminare ${count} pagina/e selezionata/e?`)) return;
+            
+            saveHistoryState();
+            
+            // Ordina gli indici in ordine decrescente per eliminarli correttamente
+            const sortedIndices = [...selectedIndices].sort((a, b) => b - a);
+            
+            sortedIndices.forEach(index => {
+                totalCompressedSize -= images[index].compressedSize;
+                images.splice(index, 1);
+            });
+            
+            // Aggiusta selectedIndex
+            if (selectedIndices.includes(selectedIndex)) {
+                selectedIndex = null;
+                tabs.classList.remove('active');
+                previewCanvas.style.display = 'none';
+                previewContainer.querySelector('.empty-preview').style.display = 'block';
+            } else if (selectedIndex !== null) {
+                // Calcola il nuovo indice dopo le eliminazioni
+                const deletedBefore = selectedIndices.filter(idx => idx < selectedIndex).length;
+                selectedIndex -= deletedBefore;
+            }
+            
+            selectedIndices = [];
+            lastSelectedIndex = null;
+            updateSelectionUI();
+            updateUI();
+        }
 
-        function selectImage(index) {
+        async function selectImage(index) {
             selectedIndex = index;
-            tabs.classList.add('active');
+            // 🔑 NON attivare automaticamente nessun tab - lascia l'utente scegliere
+            tabs.classList.add('active');  // Mostra i tab
+            
+            // 🔑 Deseleziona tutti i tab (nessuno attivo)
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             
             const img = images[index];
             fineRotation.value = img.fineRotation;
@@ -1518,57 +2009,195 @@
             renderPreview();
         }
 
-        function renderPreview() {
-            if (selectedIndex === null) return;
+        async function renderPreview() {
+            if (selectedIndex === null) {
+                console.log('renderPreview: selectedIndex è null');
+                return;
+            }
+            
+            // Evita rendering multipli simultanei
+            if (isRendering) {
+                console.log('renderPreview: rendering già in corso, skip');
+                return;
+            }
 
             const img = images[selectedIndex];
+            console.log('renderPreview chiamata per:', img.type, 'pageIndex:', img.pageIndex);
+            
+            if (img.type === 'pdf' && !showCompressedPreview) {
+                // Rendering di pagina PDF nativa ad ALTA qualità
+                console.log('Chiamando renderPDFPage...');
+                await renderPDFPage(img);
+            } else {
+                // Rendering di immagine (o preview compressa)
+                console.log('Chiamando renderImagePreview...');
+                await renderImagePreview(img);
+            }
+        }
+        
+        async function renderPDFPage(img) {
+            isRendering = true;
+            try {
+                console.log('renderPDFPage: inizio');
+                console.log('pdfArrayBuffer disponibile:', pdfArrayBuffer !== null, 'lunghezza:', pdfArrayBuffer ? pdfArrayBuffer.byteLength : 0);
+                
+                // Crea una NUOVA copia fresca per questa operazione di rendering
+                const freshCopy = new Uint8Array(pdfArrayBuffer);
+                console.log('renderPDFPage: copia fresca creata:', freshCopy.byteLength, 'bytes');
+                
+                // Carica il PDF con pdf.js per rendering ad alta qualità
+                const loadingTask = pdfjsLib.getDocument({ data: freshCopy });
+                const pdf = await loadingTask.promise;
+                console.log('renderPDFPage: PDF caricato');
+                
+                const page = await pdf.getPage(img.pageIndex + 1);
+                console.log('renderPDFPage: pagina ottenuta', img.pageIndex + 1);
+                
+                // Scala FISSA per rendering ad alta qualità (indipendente dallo zoom)
+                const renderScale = 3.5;
+                const viewport = page.getViewport({ scale: renderScale, rotation: img.rotation });
+                console.log('renderPDFPage: viewport', viewport.width, 'x', viewport.height);
+                
+                const canvas = previewCanvas;
+                const ctx = canvas.getContext('2d');
+                
+                // Canvas sempre alla stessa risoluzione alta
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                
+                // Calcola scala base per far stare la pagina nel container
+                const containerRect = previewContainer.getBoundingClientRect();
+                const containerWidth = containerRect.width - 40; // Padding
+                const containerHeight = containerRect.height - 40;
+                
+                const scaleX = containerWidth / viewport.width;
+                const scaleY = containerHeight / viewport.height;
+                const baseScale = Math.min(scaleX, scaleY, 1); // Max 100% come base
+                
+                // Applica zoom base + user zoom alla visualizzazione CSS
+                const finalScale = baseScale * currentZoom;
+                canvas.style.width = (viewport.width * finalScale) + 'px';
+                canvas.style.height = (viewport.height * finalScale) + 'px';
+                
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                console.log('renderPDFPage: baseScale', baseScale.toFixed(2), 'userZoom', currentZoom, 'finalScale', finalScale.toFixed(2));
+                await page.render({
+                    canvasContext: ctx,
+                    viewport: viewport
+                }).promise;
+                console.log('renderPDFPage: rendering completato');
+                
+                canvas.style.display = 'block';
+                previewContainer.querySelector('.empty-preview').style.display = 'none';
+                
+                if (gridVisible) {
+                    drawGrid();
+                }
+                
+                console.log(`✏️ PREVIEW PDF NATIVA - Qualità originale vettoriale`);
+                console.log(`Risoluzione: ${canvas.width}x${canvas.height}px`);
+                
+            } catch (error) {
+                console.error('❌ Errore rendering PDF:', error);
+                console.error('Stack:', error.stack);
+                alert('Errore nel rendering della preview: ' + error.message);
+            } finally {
+                isRendering = false;
+            }
+        }
+        
+        async function renderImagePreview(img) {
             const image = new Image();
+            
+            // Forza il garbage collection dell'immagine precedente
+            image.crossOrigin = "anonymous";
             
             image.onload = () => {
                 const canvas = previewCanvas;
                 const ctx = canvas.getContext('2d');
 
-                // DIMENSIONI ORIGINALI - il canvas NON si espande
-                let finalWidth = img.cropWidth;
-                let finalHeight = img.cropHeight;
-
-                canvas.width = finalWidth;
-                canvas.height = finalHeight;
-
-                canvas.style.width = (finalWidth * currentZoom) + 'px';
-                canvas.style.height = (finalHeight * currentZoom) + 'px';
-
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // Disegna su canvas temporaneo per applicare filtri
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = finalWidth;
-                tempCanvas.height = finalHeight;
-                const tempCtx = tempCanvas.getContext('2d');
+                let finalWidth, finalHeight;
                 
-                tempCtx.drawImage(
-                    image,
-                    img.cropX, img.cropY, img.cropWidth, img.cropHeight,
-                    0, 0, finalWidth, finalHeight
-                );
+                // Calcola scala base per far stare la pagina nel container
+                const containerRect = previewContainer.getBoundingClientRect();
+                const containerWidth = containerRect.width - 40; // Padding
+                const containerHeight = containerRect.height - 40;
 
-                // Applica filtri manuali
-                if (img.contrast !== 100 || img.brightness !== 100) {
-                    const imageData = tempCtx.getImageData(0, 0, finalWidth, finalHeight);
-                    const filteredData = applyManualFilters(imageData, img.contrast, img.brightness);
-                    tempCtx.putImageData(filteredData, 0, 0);
+                if (showCompressedPreview) {
+                    // Modalità: mostra versione compressa finale (come andrà nel PDF)
+                    finalWidth = img.cropWidth;
+                    finalHeight = img.cropHeight;
+
+                    canvas.width = finalWidth;
+                    canvas.height = finalHeight;
+                    
+                    const scaleX = containerWidth / finalWidth;
+                    const scaleY = containerHeight / finalHeight;
+                    const baseScale = Math.min(scaleX, scaleY, 1);
+                    const finalScale = baseScale * currentZoom;
+                    
+                    canvas.style.width = (finalWidth * finalScale) + 'px';
+                    canvas.style.height = (finalHeight * finalScale) + 'px';
+
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Disegna direttamente l'immagine compressa SENZA riapplicare filtri
+                    ctx.drawImage(image, 0, 0, finalWidth, finalHeight);
+                    
+                    console.log(`🔍 PREVIEW COMPRESSA - Qualità: ${(COMPRESSION_QUALITY * 100)}%`);
+                } else {
+                    // Modalità normale: editing con alta qualità
+                    finalWidth = img.cropWidth;
+                    finalHeight = img.cropHeight;
+
+                    canvas.width = finalWidth;
+                    canvas.height = finalHeight;
+                    
+                    const scaleX = containerWidth / finalWidth;
+                    const scaleY = containerHeight / finalHeight;
+                    const baseScale = Math.min(scaleX, scaleY, 1);
+                    const finalScale = baseScale * currentZoom;
+                    
+                    canvas.style.width = (finalWidth * finalScale) + 'px';
+                    canvas.style.height = (finalHeight * finalScale) + 'px';
+
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Disegna su canvas temporaneo per applicare filtri
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = finalWidth;
+                    tempCanvas.height = finalHeight;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    tempCtx.drawImage(
+                        image,
+                        img.cropX, img.cropY, img.cropWidth, img.cropHeight,
+                        0, 0, finalWidth, finalHeight
+                    );
+
+                    // Applica filtri manuali
+                    if (img.contrast !== 100 || img.brightness !== 100) {
+                        const imageData = tempCtx.getImageData(0, 0, finalWidth, finalHeight);
+                        const filteredData = applyManualFilters(imageData, img.contrast, img.brightness);
+                        tempCtx.putImageData(filteredData, 0, 0);
+                    }
+
+                    // Ora ruota il contenuto filtrato
+                    const totalRotation = img.rotation + img.fineRotation;
+                    const rad = totalRotation * Math.PI / 180;
+
+                    ctx.save();
+                    ctx.translate(finalWidth / 2, finalHeight / 2);
+                    ctx.rotate(rad);
+                    ctx.drawImage(tempCanvas, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
+                    ctx.restore();
+                    
+                    console.log(`✏️ PREVIEW EDITING IMMAGINE - baseScale: ${baseScale.toFixed(2)}, zoom: ${currentZoom}`);
                 }
-
-                // Ora ruota il contenuto filtrato
-                const totalRotation = img.rotation + img.fineRotation;
-                const rad = totalRotation * Math.PI / 180;
-
-                ctx.save();
-                ctx.translate(finalWidth / 2, finalHeight / 2);
-                ctx.rotate(rad);
-                ctx.drawImage(tempCanvas, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
-                ctx.restore();
 
                 canvas.style.display = 'block';
                 previewContainer.querySelector('.empty-preview').style.display = 'none';
@@ -1576,34 +2205,138 @@
                 if (gridVisible) {
                     drawGrid();
                 }
+                
+                console.log(`DataURL length: ${(showCompressedPreview ? img.currentData : img.originalData).length} chars`);
             };
 
-            image.src = img.originalData;
+            // Usa la versione appropriata
+            image.src = showCompressedPreview ? img.currentData : img.originalData;
         }
 
         function rotateImage(degrees) {
             if (selectedIndex === null) return;
             
-            saveHistory();
+            saveHistoryState();
             images[selectedIndex].rotation = (images[selectedIndex].rotation + degrees) % 360;
             
             const img = images[selectedIndex];
             [img.cropWidth, img.cropHeight] = [img.cropHeight, img.cropWidth];
             
-            updateCurrentData();
+            // Per rotazioni 90°, i PDF nativi possono rimanere PDF
+            // La rotazione verrà applicata durante l'export
+            renderPreview();
+            updateUI();
+        }
+        
+        async function convertPDFToImage(index) {
+            // Converte una pagina PDF nativa in immagine ad alta qualità
+            const img = images[index];
+            if (img.type !== 'pdf') return; // Già un'immagine
+            
+            console.log(`🔄 Conversione pagina ${index + 1} da PDF a immagine...`);
+            
+            try {
+                // Renderizza il PDF ad altissima qualità
+                const freshCopy = new Uint8Array(pdfArrayBuffer);
+                const loadingTask = pdfjsLib.getDocument({ data: freshCopy });
+                const pdf = await loadingTask.promise;
+                const page = await pdf.getPage(img.pageIndex + 1);
+                
+                const scale = 4.5;  // Alta qualità per la conversione
+                const viewport = page.getViewport({ scale: scale, rotation: img.rotation });
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                await page.render({
+                    canvasContext: ctx,
+                    viewport: viewport
+                }).promise;
+                
+                // Salva come immagine ad alta qualità
+                const originalDataUrl = canvas.toDataURL('image/jpeg', 0.98);
+                const currentDataUrl = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
+                
+                const blob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/jpeg', COMPRESSION_QUALITY);
+                });
+                
+                // Aggiorna il thumbnail per la sidebar
+                const thumbScale = 0.5;
+                const thumbViewport = page.getViewport({ scale: thumbScale, rotation: img.rotation });
+                const thumbCanvas = document.createElement('canvas');
+                thumbCanvas.width = thumbViewport.width;
+                thumbCanvas.height = thumbViewport.height;
+                const thumbCtx = thumbCanvas.getContext('2d');
+                
+                thumbCtx.fillStyle = 'white';
+                thumbCtx.fillRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+                thumbCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+                
+                const thumbnailData = thumbCanvas.toDataURL('image/jpeg', 0.7);
+                
+                // Aggiorna l'oggetto immagine
+                img.type = 'image';
+                img.originalData = originalDataUrl;
+                img.currentData = currentDataUrl;
+                img.thumbnailData = thumbnailData;  // Mantieni thumbnail
+                img.width = viewport.width;
+                img.height = viewport.height;
+                img.cropX = 0;
+                img.cropY = 0;
+                img.cropWidth = viewport.width;
+                img.cropHeight = viewport.height;
+                img.compressedSize = blob.size;
+                img.rotation = 0; // Reset rotazione (già applicata nel rendering)
+                img.fineRotation = 0; // Reset anche fine rotation
+                
+                console.log(`✅ Pagina ${index + 1} convertita in immagine ${viewport.width}x${viewport.height}px`);
+                
+                // Aggiorna il size totale
+                totalCompressedSize = images.reduce((sum, i) => sum + i.compressedSize, 0);
+                
+                updateUI();
+                
+            } catch (error) {
+                console.error('Errore conversione PDF in immagine:', error);
+                alert('Errore durante la conversione della pagina');
+            }
         }
 
-        function handleFineRotation(e) {
+        function saveStateBeforeChange() {
             if (selectedIndex === null) return;
+            if (isRestoringState) return;
+            
+            // Salva lo stato PRIMA che l'utente inizi a trascinare lo slider
+            saveHistoryState();
+        }
+        
+        async function handleFineRotationPreview(e) {
+            if (selectedIndex === null) return;
+            if (isRestoringState) return;
             
             const value = parseFloat(e.target.value);
+            
             fineRotationValue.textContent = value + '°';
             images[selectedIndex].fineRotation = value;
+            
+            // 🔑 Converti il PDF in immagine SOLO se rotazione fine è diversa da 0°
+            if (images[selectedIndex].type === 'pdf' && value !== 0) {
+                console.log('🔄 Conversione PDF per applicare rotazione fine...');
+                await convertPDFToImage(selectedIndex);
+            }
+            
             renderPreview();
         }
 
-        function updateFilters() {
+        async function updateFiltersPreview() {
             if (selectedIndex === null) return;
+            if (isRestoringState) return;
             
             images[selectedIndex].contrast = parseInt(contrastSlider.value);
             images[selectedIndex].brightness = parseInt(brightnessSlider.value);
@@ -1611,21 +2344,125 @@
             contrastValue.textContent = contrastSlider.value + '%';
             brightnessValue.textContent = brightnessSlider.value + '%';
             
+            // 🔑 I filtri richiedono conversione in immagine SOLO se diversi da 100%
+            if (images[selectedIndex].type === 'pdf') {
+                if (images[selectedIndex].contrast !== 100 || images[selectedIndex].brightness !== 100) {
+                    console.log('🔄 Conversione PDF per applicare filtri...');
+                    await convertPDFToImage(selectedIndex);
+                }
+            }
+            
             renderPreview();
         }
 
-        function saveHistory() {
+        function saveHistoryState() {
+            // Salva lo stato corrente nell'history
+            // Rimuovi tutti gli stati futuri se siamo nel mezzo dell'history
+            historyStack = historyStack.slice(0, historyIndex + 1);
+            
+            // Salva una copia profonda dello stato attuale
+            const state = {
+                images: JSON.parse(JSON.stringify(images)),
+                selectedIndex: selectedIndex,
+                totalCompressedSize: totalCompressedSize
+            };
+            
+            historyStack.push(state);
+            
+            // Mantieni solo gli ultimi MAX_HISTORY stati
+            if (historyStack.length > MAX_HISTORY) {
+                historyStack.shift();
+            } else {
+                historyIndex++;
+            }
+            
+            updateUndoRedoButtons();
+        }
+        
+        function undo() {
+            if (historyIndex <= 0) return;
+            
+            historyIndex--;
+            restoreHistoryState();
+        }
+        
+        function redo() {
+            if (historyIndex >= historyStack.length - 1) return;
+            
+            historyIndex++;
+            restoreHistoryState();
+        }
+        
+        function restoreHistoryState() {
+            isRestoringState = true;
+            
+            const state = historyStack[historyIndex];
+            images = JSON.parse(JSON.stringify(state.images));
+            selectedIndex = state.selectedIndex;
+            totalCompressedSize = state.totalCompressedSize;
+            
+            // Ripristina i valori dei controlli UI PRIMA di updateUI
+            if (selectedIndex !== null) {
+                updateControlsFromImage();
+            }
+            
+            updateUI();
+            updateUndoRedoButtons();
+            
+            // 🔑 Renderizza SUBITO mentre isRestoringState è ancora true
+            if (selectedIndex !== null) {
+                renderPreview();
+            }
+            
+            // Rilascia il blocco dopo che tutto è stato processato
+            setTimeout(() => {
+                isRestoringState = false;
+            }, 100);
+        }
+        
+        function updateControlsFromImage() {
             if (selectedIndex === null) return;
             
-            editHistory.push(JSON.parse(JSON.stringify(images[selectedIndex])));
-            if (editHistory.length > 10) editHistory.shift();
-        }
-
-        function undo() {
-            if (selectedIndex === null || editHistory.length === 0) return;
+            const img = images[selectedIndex];
             
-            images[selectedIndex] = editHistory.pop();
-            selectImage(selectedIndex);
+            // Ripristina rotazione fine
+            if (fineRotation && img.fineRotation !== undefined) {
+                fineRotation.value = img.fineRotation;
+                if (fineRotationValue) {
+                    fineRotationValue.textContent = img.fineRotation + '°';
+                }
+            }
+            
+            // Ripristina contrasto
+            if (contrastSlider && img.contrast !== undefined) {
+                contrastSlider.value = img.contrast;
+                if (contrastValue) {
+                    contrastValue.textContent = img.contrast + '%';
+                }
+            }
+            
+            // Ripristina luminosità
+            if (brightnessSlider && img.brightness !== undefined) {
+                brightnessSlider.value = img.brightness;
+                if (brightnessValue) {
+                    brightnessValue.textContent = img.brightness + '%';
+                }
+            }
+        }
+        
+        function updateUndoRedoButtons() {
+            const undoBtn = document.getElementById('undoBtn');
+            const redoBtn = document.getElementById('redoBtn');
+            
+            if (undoBtn) {
+                undoBtn.disabled = historyIndex <= 0;
+                undoBtn.style.opacity = historyIndex <= 0 ? '0.5' : '1';
+            }
+            
+            if (redoBtn) {
+                redoBtn.disabled = historyIndex >= historyStack.length - 1;
+                redoBtn.style.opacity = historyIndex >= historyStack.length - 1 ? '0.5' : '1';
+            }
         }
 
         function updateCurrentData() {
@@ -1674,10 +2511,19 @@
                 ctx.drawImage(tempCanvas, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
                 ctx.restore();
 
-                img.currentData = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
-                
-                renderPreview();
-                updateUI();
+                // Aggiorna currentData e compressedSize
+                canvas.toBlob((blob) => {
+                    // Sottrai la vecchia dimensione e aggiungi la nuova
+                    totalCompressedSize -= img.compressedSize;
+                    img.compressedSize = blob.size;
+                    totalCompressedSize += blob.size;
+                    
+                    img.currentData = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
+                    
+                    renderPreview();
+                    updateUI();
+                    updateSizeEstimate();
+                }, 'image/jpeg', COMPRESSION_QUALITY);
             };
 
             image.src = img.originalData;
@@ -1692,6 +2538,8 @@
 
         function deleteImage(index) {
             if (confirm('Eliminare questa pagina?')) {
+                saveHistoryState();
+                
                 totalCompressedSize -= images[index].compressedSize;
                 images.splice(index, 1);
                 
@@ -1724,6 +2572,23 @@
             document.getElementById('sizeInfo').textContent = estimatedMB + ' MB';
             document.getElementById('qualityInfo').textContent = (COMPRESSION_QUALITY * 100) + '%';
             document.getElementById('widthInfo').textContent = MAX_WIDTH + 'px';
+            
+            // Mostra nota se ci sono PDF nativi
+            const qualityNote = document.getElementById('qualityNote');
+            if (qualityNote) {
+                const pdfPages = images.filter(img => img.type === 'pdf').length;
+                const imagePages = images.length - pdfPages;
+                
+                if (pdfPages > 0 && imagePages === 0) {
+                    qualityNote.textContent = '(PDF nativo - qualità originale)';
+                    qualityNote.style.color = '#10b981';
+                } else if (pdfPages > 0 && imagePages > 0) {
+                    qualityNote.textContent = `(${pdfPages} PDF + ${imagePages} img)`;
+                    qualityNote.style.color = '#888';
+                } else {
+                    qualityNote.textContent = '';
+                }
+            }
         }
 
         function showProgress(title, percent) {
@@ -1748,54 +2613,288 @@
             showProgress('Creazione PDF...', 0);
 
             try {
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF({
-                    orientation: 'portrait',
-                    unit: 'mm',
-                    format: 'a4'
-                });
-
-                const pageWidth = pdf.internal.pageSize.getWidth();
-                const pageHeight = pdf.internal.pageSize.getHeight();
-
+                const { PDFDocument, degrees } = PDFLib;
+                
+                let sourcePdf = null;
+                
+                // IMPORTANTE: Se il PDF NON è protetto, ricaricalo per copyPages
+                // Se è protetto, salta questo step e usa SOLO addImagePage
+                if (!isPdfProtected && pdfArrayBuffer) {
+                    console.log('🔄 Ricaricamento PDF da copia fresca per export...');
+                    const freshArrayBuffer = new Uint8Array(pdfArrayBuffer).buffer;
+                    sourcePdf = await PDFDocument.load(freshArrayBuffer, { ignoreEncryption: true });
+                    const sourcePageCount = sourcePdf.getPageCount();
+                    
+                    console.log('🔍 Verifica sourcePdf:', {
+                        pageCount: sourcePageCount,
+                        arrayBufferSize: freshArrayBuffer.byteLength
+                    });
+                    
+                    // Verifica che gli indici delle pagine siano validi
+                    const invalidPages = images.filter(img => 
+                        img.type === 'pdf' && (img.pageIndex < 0 || img.pageIndex >= sourcePageCount)
+                    );
+                    
+                    if (invalidPages.length > 0) {
+                        console.error('❌ Pagine con indici non validi:', invalidPages);
+                        throw new Error(`${invalidPages.length} pagine hanno indici non validi`);
+                    }
+                    
+                    console.log('✅ Tutti gli indici delle pagine sono validi');
+                } else {
+                    if (isPdfProtected) {
+                        console.log('🔒 PDF protetto - salterò copyPages, userò SOLO conversione in immagine');
+                    } else {
+                        console.log('⚠️ Nessun PDF sorgente - userò solo conversione in immagine');
+                    }
+                }
+                
+                // Crea un nuovo PDF
+                const newPdf = await PDFDocument.create();
+                
+                console.log(`🔨 Creazione PDF con ${images.length} pagine...`);
+                
                 for (let i = 0; i < images.length; i++) {
                     updateProgress((i / images.length) * 100, `${i + 1}/${images.length}`);
 
                     const img = images[i];
                     
-                    if (i > 0) pdf.addPage();
-
-                    const imgRatio = img.cropWidth / img.cropHeight;
-                    const pageRatio = pageWidth / pageHeight;
-
-                    let imgWidth, imgHeight, xOffset, yOffset;
-
-                    if (imgRatio > pageRatio) {
-                        imgWidth = pageWidth;
-                        imgHeight = pageWidth / imgRatio;
-                        xOffset = 0;
-                        yOffset = (pageHeight - imgHeight) / 2;
+                    if (img.type === 'pdf' && !needsConversionToImage(img) && !isPdfProtected && sourcePdf) {
+                        // Pagina PDF nativa senza modifiche complesse E PDF NON protetto → copia diretta
+                        console.log(`  → Copia diretta pagina ${i + 1} (pageIndex: ${img.pageIndex})`);
+                        
+                        try {
+                            const [copiedPage] = await newPdf.copyPages(sourcePdf, [img.pageIndex]);
+                            console.log(`    ✓ Pagina copiata, size:`, copiedPage.getSize());
+                            
+                            // Applica solo rotazione se necessaria
+                            if (img.rotation !== 0) {
+                                copiedPage.setRotation(degrees(img.rotation));
+                                console.log(`    ✓ Rotazione applicata: ${img.rotation}°`);
+                            }
+                            
+                            newPdf.addPage(copiedPage);
+                            console.log(`    ✓ Pagina aggiunta al nuovo PDF`);
+                            
+                            console.log(`✅ Pagina ${i + 1}: PDF nativo copiato (${img.width}x${img.height}px)`);
+                        } catch (error) {
+                            // Se copyPages fallisce (es. PDF protetto o pagina vuota), usa conversione in immagine
+                            console.warn(`⚠️ copyPages fallito per pagina ${i + 1}, uso conversione in immagine`);
+                            console.log(`   Errore: ${error.message}`);
+                            await addImagePage(newPdf, img, i);
+                        }
+                        
                     } else {
-                        imgHeight = pageHeight;
-                        imgWidth = pageHeight * imgRatio;
-                        xOffset = (pageWidth - imgWidth) / 2;
-                        yOffset = 0;
+                        // Pagina con modifiche complesse O PDF protetto → converti in immagine
+                        if (img.type === 'pdf') {
+                            const reason = isPdfProtected ? 'PDF protetto' : 'modifiche applicate';
+                            console.log(`  → Pagina ${i + 1}: Conversione in immagine (${reason})`);
+                        }
+                        await addImagePage(newPdf, img, i);
                     }
-
-                    pdf.addImage(img.currentData, 'JPEG', xOffset, yOffset, imgWidth, imgHeight);
                 }
-
+                
+                // Salva il PDF
+                const pdfBytes = await newPdf.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                
                 const fileName = `spartiti_${new Date().toISOString().slice(0, 10)}.pdf`;
-                pdf.save(fileName);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                
+                URL.revokeObjectURL(url);
+                
+                const sizeMB = (pdfBytes.length / 1024 / 1024).toFixed(2);
+                console.log(`✅ PDF creato: ${sizeMB} MB`);
 
                 hideProgress();
-                alert('✅ PDF creato!');
+                alert(`✅ PDF creato: ${sizeMB} MB`);
                 
             } catch (error) {
                 console.error('Errore:', error);
                 hideProgress();
                 alert('❌ Errore nella creazione PDF');
             }
+        }
+        
+        function needsConversionToImage(img) {
+            // Verifica se la pagina ha modifiche che richiedono conversione in immagine
+            return (
+                img.type !== 'pdf' ||
+                img.fineRotation !== 0 ||
+                img.contrast !== 100 ||
+                img.brightness !== 100 ||
+                img.cropX !== 0 ||
+                img.cropY !== 0 ||
+                img.cropWidth !== img.width ||
+                img.cropHeight !== img.height
+            );
+        }
+        
+        async function addImagePage(pdf, img, index) {
+            // Converti la pagina in immagine ad alta qualità e aggiungila al PDF
+            console.log(`📝 addImagePage per pagina ${index + 1}:`, {
+                type: img.type,
+                pageIndex: img.pageIndex,
+                width: img.width,
+                height: img.height,
+                cropWidth: img.cropWidth,
+                cropHeight: img.cropHeight,
+                hasOriginalData: !!img.originalData,
+                hasCurrentData: !!img.currentData,
+                isPdfProtected: isPdfProtected
+            });
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            let imageData;
+            
+            if (img.type === 'pdf') {
+                // Renderizza pagina PDF ad alta qualità con copia fresca
+                console.log(`  → Renderizzazione PDF nativo pagina ${img.pageIndex + 1}`);
+                console.log(`  → pdfArrayBuffer disponibile:`, !!pdfArrayBuffer, 'dimensione:', pdfArrayBuffer ? pdfArrayBuffer.length : 0);
+                
+                try {
+                    const freshCopy = new Uint8Array(pdfArrayBuffer);
+                    console.log(`  → Copia creata:`, freshCopy.length, 'bytes');
+                    
+                    const loadingTask = pdfjsLib.getDocument({ data: freshCopy });
+                    console.log(`  → LoadingTask creato`);
+                    
+                    const pdfDoc = await loadingTask.promise;
+                    console.log(`  → PDF caricato con`, pdfDoc.numPages, 'pagine');
+                    
+                    const page = await pdfDoc.getPage(img.pageIndex + 1);
+                    console.log(`  → Pagina ${img.pageIndex + 1} ottenuta`);
+                    
+                    const scale = 4.5;  // Alta qualità
+                    const viewport = page.getViewport({ scale: scale, rotation: img.rotation });
+                    console.log(`  → Viewport:`, viewport.width, 'x', viewport.height, 'px');
+                    
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    await page.render({
+                        canvasContext: ctx,
+                        viewport: viewport
+                    }).promise;
+                    
+                    console.log(`  → Pagina renderizzata su canvas`);
+                    
+                    // Applica crop/filtri se necessario
+                    if (needsConversionToImage(img)) {
+                        imageData = await applyImageEffects(canvas, img);
+                    } else {
+                        imageData = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
+                    }
+                    
+                    console.log(`  → PDF renderizzato: ${viewport.width}x${viewport.height}px, data length: ${imageData.length}`);
+                } catch (error) {
+                    console.error(`❌ ERRORE nel rendering PDF pagina ${img.pageIndex + 1}:`, error);
+                    console.error(`   Stack:`, error.stack);
+                    throw error;
+                }
+                
+            } else {
+                // È già un'immagine
+                imageData = img.currentData || img.originalData;
+                console.log(`  → Usando immagine esistente, data length: ${imageData ? imageData.length : 'NULL'}`);
+                
+                if (!imageData) {
+                    console.error(`❌ ERRORE: imageData è null per pagina ${index + 1}!`);
+                    throw new Error(`Dati immagine mancanti per pagina ${index + 1}`);
+                }
+            }
+            
+            if (!imageData) {
+                console.error(`❌ ERRORE: imageData finale è null!`);
+                throw new Error('Dati immagine mancanti');
+            }
+            
+            console.log(`  → Embedding immagine nel PDF...`);
+            
+            // Aggiungi l'immagine al PDF
+            try {
+                const imgBytes = await fetch(imageData).then(res => res.arrayBuffer());
+                console.log(`  → Image bytes ottenuti: ${imgBytes.byteLength} bytes`);
+                
+                const pdfImage = await pdf.embedJpg(imgBytes);
+                console.log(`  → Immagine embedded nel PDF`);
+                
+                // Usa le dimensioni corrette per la pagina
+                const pageWidth = img.cropWidth || img.width;
+                const pageHeight = img.cropHeight || img.height;
+                
+                console.log(`  → Creazione pagina ${pageWidth}x${pageHeight}px`);
+                
+                const page = pdf.addPage([pageWidth, pageHeight]);
+                page.drawImage(pdfImage, {
+                    x: 0,
+                    y: 0,
+                    width: pageWidth,
+                    height: pageHeight
+                });
+                
+                console.log(`✅ Pagina ${index + 1} aggiunta al PDF`);
+            } catch (error) {
+                console.error(`❌ Errore embedding pagina ${index + 1}:`, error);
+                throw error;
+            }
+        }
+        
+        async function applyImageEffects(canvas, img) {
+            // Applica crop, filtri, rotazione fine a un canvas
+            const outputCanvas = document.createElement('canvas');
+            const ctx = outputCanvas.getContext('2d');
+            
+            outputCanvas.width = img.cropWidth;
+            outputCanvas.height = img.cropHeight;
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+            
+            // Disegna con crop
+            ctx.drawImage(
+                canvas,
+                img.cropX, img.cropY, img.cropWidth, img.cropHeight,
+                0, 0, img.cropWidth, img.cropHeight
+            );
+            
+            // Applica filtri
+            if (img.contrast !== 100 || img.brightness !== 100) {
+                const imageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+                const filteredData = applyManualFilters(imageData, img.contrast, img.brightness);
+                ctx.putImageData(filteredData, 0, 0);
+            }
+            
+            // Applica rotazione fine
+            if (img.fineRotation !== 0) {
+                const rotatedCanvas = document.createElement('canvas');
+                rotatedCanvas.width = outputCanvas.width;
+                rotatedCanvas.height = outputCanvas.height;
+                const rotCtx = rotatedCanvas.getContext('2d');
+                
+                rotCtx.fillStyle = 'white';
+                rotCtx.fillRect(0, 0, rotatedCanvas.width, rotatedCanvas.height);
+                
+                const rad = img.fineRotation * Math.PI / 180;
+                rotCtx.save();
+                rotCtx.translate(rotatedCanvas.width / 2, rotatedCanvas.height / 2);
+                rotCtx.rotate(rad);
+                rotCtx.drawImage(outputCanvas, -outputCanvas.width / 2, -outputCanvas.height / 2);
+                rotCtx.restore();
+                
+                return rotatedCanvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
+            }
+            
+            return outputCanvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
         }
     </script>
 </body>

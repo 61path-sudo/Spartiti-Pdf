@@ -1,6 +1,6 @@
 # 📄 PDF Editor Web
 
-Editor PDF avanzato completamente web-based, progettato per modificare spartiti musicali e documenti PDF direttamente nel browser senza installazioni.
+Editor PDF avanzato completamente web-based, progettato per modificare spartiti musicali e documenti PDF direttamente nel browser senza installazioni. **Funziona perfettamente su desktop e iPad!**
 
 ## ✨ Caratteristiche principali
 
@@ -44,7 +44,8 @@ Editor PDF avanzato completamente web-based, progettato per modificare spartiti 
 
 ### 🎯 Gestione pagine
 - **Drag & drop** per riordinare
-- **Selezione multipla** (Ctrl+Click, Shift+Click)
+- **Selezione multipla** (Ctrl+Click, Shift+Click su desktop)
+- **Modalità selezione per iPad** (pulsante dedicato + long press)
 - Duplica, elimina, rinumera pagine
 - Operazioni batch su selezioni multiple
 
@@ -70,6 +71,39 @@ Editor PDF avanzato completamente web-based, progettato per modificare spartiti 
 1. Clicca su **"💾 Esporta PDF"**
 2. Scegli un nome file
 3. Download automatico del PDF modificato
+
+## 📱 Utilizzo su iPad/Mobile
+
+### Installazione come App
+1. Apri `index.html` in **Safari**
+2. Tocca il pulsante **"Condividi"** (□↑)
+3. Scorri e tocca **"Aggiungi a Home"**
+4. L'icona dell'app 🎵 comparirà sulla Home Screen
+
+**Nota**: Assicurati che `icon-180.png` sia nella stessa cartella di `index.html`
+
+### Selezione multipla su iPad
+Su iPad non hai Ctrl/Shift per la selezione multipla, quindi:
+
+**Metodo 1 - Pulsante** (consigliato):
+1. Carica le pagine
+2. Tocca **"📋 Selezione multipla"** sotto "PAGINE"
+3. Il pulsante diventa verde **"✓ Selezione attiva"**
+4. Tocca le miniature da selezionare
+5. Usa **"🗑️ Elimina"** o altre operazioni batch
+6. Tocca di nuovo il pulsante per uscire dalla modalità
+
+**Metodo 2 - Long press**:
+1. **Tieni premuto** una miniatura per 500ms
+2. Vibrazione + attivazione automatica selezione multipla
+3. La miniatura si seleziona automaticamente
+4. Continua a toccare altre miniature
+
+### Touch gestures
+- ✅ **Slider**: Funzionano con il dito
+- ✅ **Drag & drop**: Tieni premuto e trascina le miniature
+- ✅ **Pinch zoom**: Non supportato (usa lo slider Zoom)
+- ✅ **Scroll**: Scorri le miniature normalmente
 
 ## 🔧 Tecnologie utilizzate
 
@@ -114,15 +148,20 @@ Editor PDF avanzato completamente web-based, progettato per modificare spartiti 
 
 1. **Per file pesanti**: Riduci la qualità JPEG nel codice (riga ~COMPRESSION_QUALITY)
 2. **Per rotazioni veloci**: Usa i pulsanti 90° invece della rotazione fine
-3. **Per selezioni multiple**: Ctrl+Click per aggiungere, Shift+Click per range
-4. **Per UNDO**: Ctrl+Z funziona anche con la tastiera
-5. **PDF protetti**: Si aprono normalmente, ma l'export sarà più grande
+3. **Per selezioni multiple desktop**: Ctrl+Click per aggiungere, Shift+Click per range
+4. **Per selezioni multiple iPad**: Usa il pulsante "📋 Selezione multipla" o long press
+5. **Per UNDO**: Ctrl+Z funziona anche con la tastiera
+6. **PDF protetti**: Si aprono normalmente, ma l'export sarà più grande
+7. **Su iPad**: Aggiungi l'app alla Home Screen per accesso rapido
+8. **Performance iPad**: Per PDF molto grandi (>50 pagine), considera di lavorare su sezioni separate
 
 ## 🐛 Limitazioni note
 
 - **UNDO**: Dopo Undo, potrebbe essere necessario ricliccare sulla miniatura per vedere l'anteprima aggiornata
-- **Rotazione fine**: La prima applicazione su PDF richiede conversione (1-2 secondi)
+- **Rotazione fine prima volta**: Su PDF, la prima applicazione richiede conversione (1-2 secondi)
 - **File size**: PDF protetti diventano più grandi dopo l'export (conversione immagini)
+- **iPad drag & drop**: Funziona ma può essere meno preciso del desktop (usa il numero pagina per spostamenti precisi)
+- **Vibrazione haptic**: Disponibile solo su iPad/iPhone con iOS che supporta la Vibration API
 
 ## 📝 Note
 
@@ -141,6 +180,7 @@ Contributi benvenuti! Apri una issue o pull request su GitHub.
 
 ---
 
-**Versione**: 2.0  
+**Versione**: 2.1  
 **Ultimo aggiornamento**: Novembre 2024  
-**Browser supportati**: Chrome, Firefox, Edge, Safari (moderne versioni)
+**Browser supportati**: Chrome, Firefox, Edge, Safari (desktop e **iPad/iOS**)  
+**Ottimizzato per**: Desktop e tablet (iPad)

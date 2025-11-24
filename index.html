@@ -9,6 +9,12 @@
     <link rel="apple-touch-icon" href="icon-180.png">
     <link rel="icon" type="image/png" href="icon-180.png">
     
+    <!-- 🔑 Meta tag per far aprire l'app a schermo intero (standalone) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Spartiti PDF">
+    <meta name="mobile-web-app-capable" content="yes">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -602,7 +608,8 @@
                 </button>
                 <div id="selectionInfo" style="display: none; font-size: 11px; color: #10b981; margin-top: 5px;">
                     <span id="selectionCount">0</span> selezionate
-                    <button id="deleteSelectedBtn" class="btn-danger" style="font-size: 10px; padding: 3px 8px; margin-left: 10px;">🗑️ Elimina</button>
+                    <button id="moveSelectedBtn" class="btn-secondary" style="font-size: 10px; padding: 3px 8px; margin-left: 10px;">📍 Sposta</button>
+                    <button id="deleteSelectedBtn" class="btn-danger" style="font-size: 10px; padding: 3px 8px;">🗑️ Elimina</button>
                     <button id="deselectAllBtn" class="btn-secondary" style="font-size: 10px; padding: 3px 8px;">✕ Deseleziona</button>
                 </div>
                 <div class="sidebar-controls">
@@ -775,6 +782,7 @@
         const renumberBtn = document.getElementById('renumberBtn');
         const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
         const deselectAllBtn = document.getElementById('deselectAllBtn');
+        const moveSelectedBtn = document.getElementById('moveSelectedBtn');
         const multiSelectToggle = document.getElementById('multiSelectToggle');
         const selectionInfo = document.getElementById('selectionInfo');
         const selectionCount = document.getElementById('selectionCount');
@@ -865,6 +873,7 @@
         renumberBtn.addEventListener('click', renumberPages);
         deleteSelectedBtn.addEventListener('click', deleteSelectedPages);
         deselectAllBtn.addEventListener('click', deselectAll);
+        moveSelectedBtn.addEventListener('click', moveSelectedPages);
         multiSelectToggle.addEventListener('click', toggleMultiSelectMode);
         
         // Keyboard shortcuts per undo/redo
@@ -1775,33 +1784,39 @@
                 
                 // 🔑 Long press per attivare modalità selezione (touch/iPad)
                 let longPressTimer;
+                let hasMoved = false;
+                
                 item.addEventListener('touchstart', (e) => {
                     if (e.target.closest('.thumb-btn') || e.target.classList.contains('page-number')) return;
                     
+                    hasMoved = false;
                     longPressTimer = setTimeout(() => {
-                        // Attiva modalità selezione multipla dopo 500ms
-                        if (!isMultiSelectMode) {
-                            isMultiSelectMode = true;
-                            multiSelectToggle.textContent = '✓ Selezione attiva';
-                            multiSelectToggle.style.background = '#10b981';
-                            multiSelectToggle.style.color = 'white';
-                        }
-                        // Seleziona questa miniatura
-                        toggleSelection(index);
-                        lastSelectedIndex = index;
-                        updateSelectionUI();
-                        // Feedback tattile se disponibile
-                        if (navigator.vibrate) {
-                            navigator.vibrate(50);
+                        // Attiva modalità selezione multipla dopo 500ms SOLO se non hai fatto drag
+                        if (!hasMoved) {
+                            if (!isMultiSelectMode) {
+                                isMultiSelectMode = true;
+                                multiSelectToggle.textContent = '✓ Selezione attiva';
+                                multiSelectToggle.style.background = '#10b981';
+                                multiSelectToggle.style.color = 'white';
+                            }
+                            // Seleziona questa miniatura
+                            toggleSelection(index);
+                            lastSelectedIndex = index;
+                            updateSelectionUI();
+                            // Feedback tattile se disponibile
+                            if (navigator.vibrate) {
+                                navigator.vibrate(50);
+                            }
                         }
                     }, 500);
                 });
                 
-                item.addEventListener('touchend', () => {
+                item.addEventListener('touchmove', () => {
+                    hasMoved = true;  // Stai facendo drag, non long press
                     clearTimeout(longPressTimer);
                 });
                 
-                item.addEventListener('touchmove', () => {
+                item.addEventListener('touchend', () => {
                     clearTimeout(longPressTimer);
                 });
 
@@ -2017,6 +2032,27 @@
             } else {
                 selectionInfo.style.display = 'none';
             }
+        }
+        
+        function moveSelectedPages() {
+            if (selectedIndices.length === 0) return;
+            
+            const count = selectedIndices.length;
+            const newPos = prompt(`Sposta ${count} pagina/e selezionata/e alla posizione:`, '1');
+            
+            if (newPos === null) return;
+            
+            const pos = parseInt(newPos);
+            if (isNaN(pos) || pos < 1 || pos > images.length) {
+                alert('Posizione non valida!');
+                return;
+            }
+            
+            const targetIndex = pos - 1;
+            
+            saveHistoryState();
+            moveMultiplePages(targetIndex);
+            updateUI();
         }
         
         function deleteSelectedPages() {

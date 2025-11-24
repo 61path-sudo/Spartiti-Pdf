@@ -592,6 +592,9 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <h3>PAGINE (<span id="thumbCount">0</span>)</h3>
+                <button id="multiSelectToggle" class="btn-secondary" style="font-size: 10px; padding: 3px 8px; margin-top: 5px; display: none;">
+                    📋 Selezione multipla
+                </button>
                 <div id="selectionInfo" style="display: none; font-size: 11px; color: #10b981; margin-top: 5px;">
                     <span id="selectionCount">0</span> selezionate
                     <button id="deleteSelectedBtn" class="btn-danger" style="font-size: 10px; padding: 3px 8px; margin-left: 10px;">🗑️ Elimina</button>
@@ -756,6 +759,7 @@
         let historyIndex = -1;
         let isRestoringState = false;  // 🔑 Flag per evitare loop durante UNDO/REDO
         let isConvertingPDF = false;  // 🔑 Flag per tracciare conversione PDF in background
+        let isMultiSelectMode = false;  // 🔑 Flag per modalità selezione multipla (iPad)
         const MAX_HISTORY = 50;
 
         const fileInput = document.getElementById('fileInput');
@@ -766,6 +770,7 @@
         const renumberBtn = document.getElementById('renumberBtn');
         const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
         const deselectAllBtn = document.getElementById('deselectAllBtn');
+        const multiSelectToggle = document.getElementById('multiSelectToggle');
         const selectionInfo = document.getElementById('selectionInfo');
         const selectionCount = document.getElementById('selectionCount');
         const thumbnailsContainer = document.getElementById('thumbnailsContainer');
@@ -855,6 +860,7 @@
         renumberBtn.addEventListener('click', renumberPages);
         deleteSelectedBtn.addEventListener('click', deleteSelectedPages);
         deselectAllBtn.addEventListener('click', deselectAll);
+        multiSelectToggle.addEventListener('click', toggleMultiSelectMode);
         
         // Keyboard shortcuts per undo/redo
         document.addEventListener('keydown', (e) => {
@@ -1713,6 +1719,7 @@
             undoBtn.style.display = hasImages ? 'inline-flex' : 'none';
             redoBtn.style.display = hasImages ? 'inline-flex' : 'none';
             renumberBtn.style.display = hasImages ? 'inline-block' : 'none';
+            multiSelectToggle.style.display = hasImages ? 'inline-block' : 'none';  // 🔑 Mostra pulsante selezione multipla
             tabs.classList.toggle('active', selectedIndex !== null);
             
             pageCount.textContent = images.length;
@@ -1759,6 +1766,38 @@
                     if (!e.target.closest('.thumb-btn') && !e.target.classList.contains('page-number')) {
                         handleThumbnailClick(index, e);
                     }
+                });
+                
+                // 🔑 Long press per attivare modalità selezione (touch/iPad)
+                let longPressTimer;
+                item.addEventListener('touchstart', (e) => {
+                    if (e.target.closest('.thumb-btn') || e.target.classList.contains('page-number')) return;
+                    
+                    longPressTimer = setTimeout(() => {
+                        // Attiva modalità selezione multipla dopo 500ms
+                        if (!isMultiSelectMode) {
+                            isMultiSelectMode = true;
+                            multiSelectToggle.textContent = '✓ Selezione attiva';
+                            multiSelectToggle.style.background = '#10b981';
+                            multiSelectToggle.style.color = 'white';
+                        }
+                        // Seleziona questa miniatura
+                        toggleSelection(index);
+                        lastSelectedIndex = index;
+                        updateSelectionUI();
+                        // Feedback tattile se disponibile
+                        if (navigator.vibrate) {
+                            navigator.vibrate(50);
+                        }
+                    }, 500);
+                });
+                
+                item.addEventListener('touchend', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                item.addEventListener('touchmove', () => {
+                    clearTimeout(longPressTimer);
                 });
 
                 const pageNumSpan = item.querySelector('.page-number');
@@ -1894,7 +1933,32 @@
             draggedIndex = null;
         }
         
+        function toggleMultiSelectMode() {
+            isMultiSelectMode = !isMultiSelectMode;
+            
+            if (isMultiSelectMode) {
+                multiSelectToggle.textContent = '✓ Selezione attiva';
+                multiSelectToggle.style.background = '#10b981';
+                multiSelectToggle.style.color = 'white';
+            } else {
+                multiSelectToggle.textContent = '📋 Selezione multipla';
+                multiSelectToggle.style.background = '';
+                multiSelectToggle.style.color = '';
+                // Deseleziona tutto quando esci dalla modalità
+                deselectAll();
+            }
+        }
+        
         function handleThumbnailClick(index, event) {
+            // 🔑 Se siamo in modalità selezione multipla (per iPad/touch)
+            if (isMultiSelectMode) {
+                toggleSelection(index);
+                lastSelectedIndex = index;
+                updateSelectionUI();
+                return;
+            }
+            
+            // Comportamento desktop normale
             if (event.ctrlKey || event.metaKey) {
                 // Ctrl+Click: toggle selezione
                 toggleSelection(index);
